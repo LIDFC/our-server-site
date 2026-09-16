@@ -1,0 +1,73 @@
+---
+import { NAV, SITE } from "../site";
+---
+
+<footer class="site-footer">
+  <div class="container site-footer__inner">
+    <div class="site-footer__about">
+      <p class="site-footer__name">{SITE.name}</p>
+      <p class="muted">
+        Minecraft {SITE.minecraftVersion}, адрес <span class="code-chip">{SITE.address}</span>
+      </p>
+    </div>
+    <nav aria-label="Ссылки в подвале">
+      <ul class="site-footer__links">
+        {
+          NAV.map((item) => (
+            <li>
+              <a href={item.href}>{item.label}</a>
+            </li>
+          ))
+        }
+        <li><a href={SITE.launcher.repoUrl} rel="noopener">Лаунчер на GitHub</a></li>
+      </ul>
+    </nav>
+    <p class="site-footer__legal muted">
+      Неофициальный сервер. Minecraft — товарный знак Mojang Studios, сайт с ней не связан.
+    </p>
+  </div>
+</footer>
+
+<style is:global>
+  .site-footer {
+    margin-top: var(--section-gap);
+    border-top: 1px solid var(--line);
+    background: var(--ground-raised);
+  }
+
+  .site-footer__inner {
+    display: grid;
+    gap: 1.5rem 3rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    padding-block: 2.5rem;
+    font-size: var(--text-small);
+  }
+
+  .site-footer__name {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .site-footer__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .site-footer__links a {
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+
+  .site-footer__links a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+
+  .site-footer__legal {
+    grid-column: 1 / -1;
+  }
+</style>

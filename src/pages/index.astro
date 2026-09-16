@@ -1,0 +1,121 @@
+---
+import CopyAddress from "../components/CopyAddress.astro";
+import OnlineChart from "../components/OnlineChart.astro";
+import StatusPanel from "../components/StatusPanel.astro";
+import Base from "../layouts/Base.astro";
+import { SITE } from "../site";
+---
+
+<Base>
+  <section class="container hero">
+    <div class="hero__copy">
+      <h1>{SITE.name}</h1>
+      <p class="hero__lead">
+        Небольшой сервер Minecraft {SITE.minecraftVersion} для своей компании. Голосовой чат прямо в игре, живая карта мира и
+        лаунчер, который сам поставит нужную версию и моды.
+      </p>
+      <CopyAddress />
+      <div class="button-row">
+        <a class="button button--primary button--large" href="/launcher#start">Играть</a>
+        <div class="download-cta">
+          <a class="button button--secondary button--large" href={SITE.launcher.latestUrl} data-download-primary>
+            <span data-download-label>Скачать лаунчер</span>
+          </a>
+          <p class="download-cta__detail" data-download-detail></p>
+        </div>
+      </div>
+    </div>
+    <StatusPanel />
+  </section>
+
+  <section class="container section" aria-labelledby="start-heading">
+    <div class="section-head">
+      <h2 id="start-heading">Как начать играть</h2>
+      <p>Три шага, и вы на сервере. Настраивать версию Minecraft и моды вручную не нужно.</p>
+    </div>
+    <ol class="steps steps--row">
+      <li class="step">
+        <h3>Скачайте лаунчер</h3>
+        <p>{SITE.launcher.name} для Windows и macOS, кнопка выше подберёт файл под вашу систему.</p>
+      </li>
+      <li class="step">
+        <h3>Войдите и откройте «Наш сервер»</h3>
+        <p>Хватит гостевого аккаунта с ником, аккаунт Microsoft не нужен.</p>
+      </li>
+      <li class="step">
+        <h3>Нажмите «Играть на сервере»</h3>
+        <p>Лаунчер поставит Minecraft {SITE.minecraftVersion}, Fabric и моды сервера и сразу подключит вас.</p>
+      </li>
+    </ol>
+    <p class="section-more"><a class="text-link" href="/launcher#start">Подробная инструкция по шагам</a></p>
+  </section>
+
+  <section class="container section">
+    <div class="split">
+      <div class="home-map" data-map-state="loading" aria-labelledby="map-heading">
+        <div class="section-head">
+          <h2 id="map-heading">Карта мира</h2>
+          <p>Где чей дом, куда ведут дороги и кто сейчас в игре — не заходя в Minecraft.</p>
+        </div>
+        <div class="map-preview">
+          <div data-map-show="ready" data-map-frame="preview" hidden></div>
+          <a class="button button--primary button--small map-preview__overlay" href="/map" data-map-show="ready" hidden>Открыть карту</a>
+          <p class="map-preview__message" data-map-show="loading">Загружаем карту…</p>
+          <p class="map-preview__message" data-map-show="missing" hidden>
+            Карта появится, когда на сервере заработает squaremap. Загляните сюда чуть позже.
+          </p>
+          <p class="map-preview__message" data-map-show="error" hidden>Не удалось узнать, настроена ли карта.</p>
+        </div>
+      </div>
+
+      <div aria-labelledby="leaders-heading">
+        <div class="section-head">
+          <h2 id="leaders-heading">Доска почёта</h2>
+          <p>Рекорды берутся прямо из статистики Minecraft на сервере.</p>
+        </div>
+        <div class="boards boards--compact" data-leaderboard-preview>
+          <p class="muted">Загружаем рекорды…</p>
+        </div>
+        <p class="section-more"><a class="text-link" href="/stats">Вся статистика</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container section" aria-labelledby="online-heading">
+    <div class="section-head">
+      <h2 id="online-heading">Онлайн за сутки</h2>
+      <p>Сайт отмечает число игроков каждые несколько минут. Разрывы на графике — время, когда сервер был выключен.</p>
+    </div>
+    <OnlineChart hours={24} />
+  </section>
+
+  <section class="container section" aria-labelledby="first-login-heading">
+    <div class="split">
+      <div class="section-head">
+        <h2 id="first-login-heading">Первый вход на сервер</h2>
+        <p>Ник защищён паролем. Придумайте его один раз, а потом вводите при каждом входе.</p>
+      </div>
+      <div class="commands">
+        <div class="command">
+          <code>/register пароль пароль</code>
+          <span>в первый раз, пароль дважды</span>
+        </div>
+        <div class="command">
+          <code>/login пароль</code>
+          <span>при каждом следующем входе</span>
+        </div>
+        <p class="muted">Про голосовой чат и частые проблемы — в <a class="text-link" href="/rules#faq">правилах и ответах на вопросы</a>.</p>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style is:global>
+  .section-more {
+    margin-top: 1.5rem;
+  }
+
+  .home-map .map-preview {
+    aspect-ratio: 16 / 11;
+  }
+</style>

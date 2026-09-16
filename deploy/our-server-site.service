@@ -1,0 +1,40 @@
+# /etc/systemd/system/our-server-site.service
+[Unit]
+Description=Our Server website
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# the same user that runs the Minecraft server, so the world statistics are readable
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/our-server-site
+ExecStart=/usr/bin/node --env-file=/opt/our-server-site/.env /opt/our-server-site/server/src/index.ts
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+# resource limits for a small VPS that also runs Minecraft
+MemoryMax=200M
+CPUQuota=50%
+Nice=5
+
+# sandbox: the site only writes its own data folder and only reads the Minecraft folder
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/our-server-site/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

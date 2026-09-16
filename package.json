@@ -1,0 +1,29 @@
+{
+  "name": "our-server-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Website of the Our Server Minecraft server: status, launcher guide, map, statistics, gallery and rules",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "astro dev",
+    "dev:server": "node --watch --env-file-if-exists=.env server/src/index.ts",
+    "build": "astro build",
+    "start": "node --env-file-if-exists=.env server/src/index.ts",
+    "typecheck": "tsc -p server/tsconfig.json",
+    "test": "node --test \"server/test/**/*.test.ts\"",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "astro": "^7.3.2",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/onest": "^5.3.1"
+  }
+}

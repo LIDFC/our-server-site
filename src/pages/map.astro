@@ -1,0 +1,29 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Карта мира" description="Живая карта мира сервера: постройки, дороги и игроки онлайн.">
+  <div class="container" data-map-state="loading">
+    <header class="page-head">
+      <h1>Карта мира</h1>
+      <p>Вид сверху на весь мир сервера. Карта обновляется сама, пока сервер работает, и показывает игроков онлайн.</p>
+      <p class="muted" data-map-position hidden></p>
+      <div class="button-row" data-map-show="ready" hidden>
+        <a class="button button--secondary" href="/map" data-map-open target="_blank" rel="noopener">Открыть во весь экран</a>
+      </div>
+    </header>
+
+    <section class="section">
+      <div class="map-full" data-map-show="ready" data-map-frame="full" hidden></div>
+      <p class="notice" data-map-show="loading">Загружаем карту…</p>
+      <div class="notice" data-map-show="missing" hidden>
+        <p><strong>Карта пока не подключена.</strong></p>
+        <p>
+          Она появится здесь, когда на сервере заработает плагин squaremap. Ничего устанавливать не нужно — просто загляните
+          позже.
+        </p>
+      </div>
+      <p class="notice" data-map-show="error" hidden>Не удалось узнать, настроена ли карта. Попробуйте обновить страницу.</p>
+    </section>
+  </div>
+</Base>

@@ -1,0 +1,54 @@
+---
+import "@fontsource-variable/onest";
+import "@fontsource-variable/jetbrains-mono";
+import "../styles/global.css";
+import "../styles/pages.css";
+
+import SiteFooter from "../components/SiteFooter.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import { SITE } from "../site";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title,
+  description = `Сервер Minecraft ${SITE.minecraftVersion} для своей компании: адрес, наш лаунчер, карта мира, статистика игроков и правила.`,
+} = Astro.props;
+
+const fullTitle = title ? `${title} | ${SITE.name}` : `${SITE.name} — сервер Minecraft ${SITE.minecraftVersion}`;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#121417" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content="ru_RU" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Перейти к содержимому</a>
+    <SiteHeader />
+    <main id="main">
+      <slot />
+    </main>
+    <SiteFooter />
+    <script>
+      import "../scripts/main";
+    </script>
+  </body>
+</html>

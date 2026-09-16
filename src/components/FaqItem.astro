@@ -1,0 +1,16 @@
+---
+interface Props {
+  question: string;
+  id?: string;
+  open?: boolean;
+}
+
+const { question, id, open = false } = Astro.props;
+---
+
+<details class="faq__item" id={id} open={open}>
+  <summary>{question}</summary>
+  <div class="faq__body">
+    <slot />
+  </div>
+</details>

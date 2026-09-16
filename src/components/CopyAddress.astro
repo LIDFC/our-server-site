@@ -1,0 +1,47 @@
+---
+import { SITE } from "../site";
+
+interface Props {
+  label?: string;
+}
+
+const { label = "Адрес сервера" } = Astro.props;
+---
+
+<div class="copy-address">
+  <span class="copy-address__label">{label}</span>
+  <div class="copy-address__row">
+    <code class="copy-address__value">{SITE.address}</code>
+    <button class="button button--secondary button--small" type="button" data-copy={SITE.address}>Скопировать</button>
+    <span class="sr-only" role="status" data-copy-status></span>
+  </div>
+</div>
+
+<style is:global>
+  .copy-address {
+    display: grid;
+    gap: 0.4rem;
+  }
+
+  .copy-address__label {
+    color: var(--ink-muted);
+    font-size: var(--text-small);
+  }
+
+  .copy-address__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .copy-address__value {
+    padding: 0.5rem 0.85rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    background: var(--ground-raised);
+    font-size: 1.125rem;
+    letter-spacing: 0.01em;
+    user-select: all;
+  }
+</style>

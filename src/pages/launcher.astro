@@ -1,0 +1,291 @@
+---
+import FaqItem from "../components/FaqItem.astro";
+import Base from "../layouts/Base.astro";
+import { SITE } from "../site";
+
+const builds = [
+  {
+    platform: "windows-x64",
+    title: "Windows",
+    description: "Для большинства компьютеров с Windows 10 и 11.",
+    files: [
+      { id: "windows-x64-setup", label: "Установщик (.exe)" },
+      { id: "windows-x64-portable", label: "Portable (.zip)" },
+      { id: "windows-x64-zip", label: "Архив (.zip)" },
+    ],
+  },
+  {
+    platform: "windows-arm64",
+    title: "Windows на ARM",
+    description: "Для ноутбуков на процессорах Snapdragon и других ARM64.",
+    files: [
+      { id: "windows-arm64-setup", label: "Установщик (.exe)" },
+      { id: "windows-arm64-portable", label: "Portable (.zip)" },
+      { id: "windows-arm64-zip", label: "Архив (.zip)" },
+    ],
+  },
+  {
+    platform: "macos",
+    title: "macOS",
+    description: "Одна сборка для Mac на Apple Silicon и на Intel.",
+    files: [
+      { id: "macos-dmg", label: "Образ диска (.dmg)" },
+      { id: "macos-zip", label: "Архив (.zip)" },
+    ],
+  },
+  {
+    platform: "windows-mingw",
+    title: "Windows, запасная сборка",
+    description: "Та же программа для Windows x64, собранная другим компилятором (MinGW). Берите её, если обычная сборка не запускается.",
+    files: [
+      { id: "windows-mingw-setup", label: "Установщик (.exe)" },
+      { id: "windows-mingw-portable", label: "Portable (.zip)" },
+      { id: "windows-mingw-zip", label: "Архив (.zip)" },
+    ],
+  },
+  {
+    platform: "linux",
+    title: "Linux",
+    description: "Готовой сборки пока нет. Лаунчер можно собрать из исходного кода — это для тех, кто уже собирал программы сам.",
+    files: [{ id: "source", label: "Исходный код (.tar.gz)" }],
+  },
+];
+---
+
+<Base title="Наш лаунчер" description={`${SITE.launcher.name}: как скачать, установить и за пару минут зайти на ${SITE.address}.`}>
+  <div class="container">
+    <header class="page-head">
+      <h1>Наш лаунчер</h1>
+      <p>
+        {SITE.launcher.name} — наша версия Prism Launcher. Он сам ставит Minecraft {SITE.minecraftVersion}, Fabric и моды сервера и
+        одной кнопкой подключает к <span class="code-chip">{SITE.address}</span>.
+      </p>
+      <p class="release-line">
+        <span data-release-show="ready" hidden>
+          Актуальная версия <strong data-release-version>—</strong> от <span data-release-date>—</span>
+        </span>
+        <span data-release-show="missing" hidden>Сейчас не удалось узнать последнюю версию, но все файлы есть на GitHub.</span>
+        <a class="text-link" href={SITE.launcher.releasesUrl} data-release-link rel="noopener">Страница релиза на GitHub</a>
+      </p>
+      <div class="download-cta">
+        <a class="button button--primary button--large" href={SITE.launcher.latestUrl} data-download-primary>
+          <span data-download-label>Скачать лаунчер</span>
+        </a>
+        <p class="download-cta__detail" data-download-detail></p>
+      </div>
+    </header>
+
+    <section class="section" aria-labelledby="why-heading">
+      <div class="section-head">
+        <h2 id="why-heading">Почему именно наш лаунчер</h2>
+        <p>С обычным Minecraft зайти тоже можно, но тогда версию, загрузчик и каждый мод придётся ставить и обновлять вручную.</p>
+      </div>
+      <ul class="reasons">
+        <li>
+          <h3>Одна кнопка вместо инструкции</h3>
+          <p>Раздел «Наш сервер» ставит нужную версию Minecraft, Fabric и моды сервера: голосовой чат, мини-карту, Sodium.</p>
+        </li>
+        <li>
+          <h3>Сборка всегда совпадает с сервером</h3>
+          <p>Когда моды на сервере меняются, лаунчер предлагает обновиться. Ваши собственные моды он не трогает.</p>
+        </li>
+        <li>
+          <h3>Без аккаунта Microsoft</h3>
+          <p>Играть можно с гостевым аккаунтом, достаточно ника. Если есть аккаунт Ely.by, подойдёт и он.</p>
+        </li>
+        <li>
+          <h3>Безопасные загрузки</h3>
+          <p>Моды скачиваются только с Modrinth, и у каждого файла проверяется контрольная сумма.</p>
+        </li>
+        <li>
+          <h3>Открытый код</h3>
+          <p>
+            Лаунчер основан на Prism Launcher, а весь его код лежит в
+            <a class="text-link" href={SITE.launcher.repoUrl} rel="noopener">репозитории на GitHub</a>.
+          </p>
+        </li>
+      </ul>
+    </section>
+
+    <section class="section" id="download" aria-labelledby="download-heading">
+      <div class="section-head">
+        <h2 id="download-heading">Скачать</h2>
+        <p>Все файлы — из последнего релиза на GitHub. Подходящая вашему компьютеру сборка подсвечена.</p>
+      </div>
+
+      <div class="builds">
+        {
+          builds.map((build) => (
+            <article class="build" data-platform={build.platform} data-build={build.files.map((file) => file.id).join(" ")}>
+              <div class="build__head">
+                <h3>{build.title}</h3>
+                <span class="build__badge">Подходит вам</span>
+              </div>
+              <p>{build.description}</p>
+              <ul class="build__files">
+                {build.files.map((file) => (
+                  <li>
+                    <a class="build__file" href={SITE.launcher.latestUrl} data-build-file={file.id} rel="noopener">
+                      <span>{file.label}</span>
+                      <span data-build-size />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))
+        }
+      </div>
+
+      <details class="other-files section-more" data-other-files hidden>
+        <summary>Другие файлы релиза</summary>
+        <ul></ul>
+      </details>
+
+      <div class="section">
+        <div class="section-head">
+          <h3>Чем отличаются варианты</h3>
+        </div>
+        <dl class="variants">
+          <div>
+            <dt>Установщик</dt>
+            <dd>Ставит лаунчер как обычную программу, с ярлыком в меню «Пуск». Самый простой вариант.</dd>
+          </div>
+          <div>
+            <dt>Portable</dt>
+            <dd>Распакуйте в любую папку: игры и настройки хранятся рядом с лаунчером. Удобно, если нет прав на установку программ.</dd>
+          </div>
+          <div>
+            <dt>Архив</dt>
+            <dd>Та же программа без установки, но игры и настройки хранятся в профиле пользователя Windows.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="section" id="start" aria-labelledby="start-heading">
+      <div class="section-head">
+        <h2 id="start-heading">Как начать играть</h2>
+        <p>Обычно это занимает пару минут и больше не повторяется: дальше хватает кнопки «Играть на сервере».</p>
+      </div>
+
+      <ol class="steps steps--detailed">
+        <li class="step">
+          <h3>Скачайте лаунчер</h3>
+          <div class="step__body">
+            <p>Нажмите «<a class="text-link" href="#download">Скачать</a>» выше — сайт сам подберёт файл для вашей системы.</p>
+          </div>
+        </li>
+        <li class="step">
+          <h3>Выберите сборку</h3>
+          <div class="step__body">
+            <ul>
+              <li>Обычный компьютер с Windows — <strong>Windows, установщик</strong>.</li>
+              <li>Ноутбук на Snapdragon — <strong>Windows на ARM</strong>.</li>
+              <li>Mac — <strong>macOS, образ .dmg</strong>.</li>
+            </ul>
+          </div>
+        </li>
+        <li class="step">
+          <h3>Установите или распакуйте</h3>
+          <div class="step__body">
+            <p>
+              <strong>Windows:</strong> запустите скачанный .exe. Если появится окно «Система Windows защитила ваш компьютер»,
+              нажмите «Подробнее», затем «Выполнить в любом случае»: у наших сборок пока нет платной цифровой подписи.
+            </p>
+            <p><strong>Portable или архив:</strong> распакуйте в отдельную папку, например <span class="code-chip">C:\Games\MkeiitLauncher</span>.</p>
+            <p>
+              <strong>macOS:</strong> откройте .dmg и перетащите лаунчер в «Программы». При первом запуске нажмите на значок правой
+              кнопкой и выберите «Открыть».
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <h3>Запустите лаунчер</h3>
+          <div class="step__body">
+            <p>
+              При первом запуске выберите язык. Если лаунчер предложит скачать Java — соглашайтесь: Minecraft
+              {SITE.minecraftVersion} нужна Java 21.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <h3>Войдите в аккаунт</h3>
+          <div class="step__body">
+            <p>Откройте меню «Учётные записи» и выберите «Управление учётными записями». Дальше:</p>
+            <ul>
+              <li>
+                <strong>Add Guest / Offline</strong> — введите ник: латинские буквы, цифры и «_», до 16 символов. Под этим ником вас
+                увидят на сервере.
+              </li>
+              <li><strong>Add Ely.by</strong> — если у вас есть аккаунт Ely.by. Вход откроется в браузере.</li>
+            </ul>
+          </div>
+        </li>
+        <li class="step">
+          <h3>Откройте «Наш сервер»</h3>
+          <div class="step__body">
+            <p>Кнопка «Наш сервер» — на верхней панели лаунчера, рядом с «Добавить экземпляр».</p>
+          </div>
+        </li>
+        <li class="step">
+          <h3>Подготовьте сервер</h3>
+          <div class="step__body">
+            <p>
+              Раздел сам проверит, в сети ли <span class="code-chip">{SITE.address}</span>, и покажет сборку модов. Нажмите
+              «Установить моды»: лаунчер создаст отдельную игру для сервера и скачает всё нужное.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <h3>Запустите игру</h3>
+          <div class="step__body">
+            <p>
+              Нажмите «Играть на сервере». Minecraft запустится и сразу подключится. В первый раз зарегистрируйтесь в чате командой
+              <span class="code-chip">/register пароль пароль</span>, а потом входите через
+              <span class="code-chip">/login пароль</span>.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section" aria-labelledby="launcher-help-heading">
+      <div class="section-head">
+        <h2 id="launcher-help-heading">Если что-то не получается</h2>
+      </div>
+      <div class="faq">
+        <FaqItem question="Антивирус или Windows не дают запустить лаунчер">
+          <p>
+            Наши сборки пока без цифровой подписи, поэтому Windows SmartScreen их не знает. Скачивайте лаунчер только с этой
+            страницы или из GitHub и разрешите запуск: «Подробнее» → «Выполнить в любом случае».
+          </p>
+        </FaqItem>
+        <FaqItem question="macOS пишет, что приложение нельзя открыть">
+          <p>
+            Нажмите на лаунчер в «Программах» правой кнопкой, выберите «Открыть» и подтвердите. Если не помогло, откройте
+            «Системные настройки» → «Конфиденциальность и безопасность» и нажмите «Всё равно открыть».
+          </p>
+        </FaqItem>
+        <FaqItem question="Лаунчер не запускается или сразу закрывается">
+          <p>Попробуйте запасную сборку «Windows, запасная сборка» из раздела «Скачать» — она собрана другим компилятором.</p>
+        </FaqItem>
+        <FaqItem question="«Наш сервер» пишет о проблеме с серверной сборкой">
+          <p>
+            Чаще всего это пропавший интернет или временно недоступные GitHub и Modrinth. Нажмите «Проверить снова» через минуту.
+            Уже установленные моды при этом не удаляются.
+          </p>
+        </FaqItem>
+        <FaqItem question="Кнопка «Играть на сервере» неактивна">
+          <p>
+            В папке модов лежит свой файл с тем же именем, что и мод сборки. Лаунчер назовёт его — удалите или переименуйте этот
+            файл и нажмите «Проверить снова».
+          </p>
+        </FaqItem>
+      </div>
+      <p class="section-more">
+        Не нашли ответ? Загляните в <a class="text-link" href="/rules#faq">правила и частые вопросы</a>.
+      </p>
+    </section>
+  </div>
+</Base>

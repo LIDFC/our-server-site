@@ -1,0 +1,54 @@
+---
+import OnlineChart from "../components/OnlineChart.astro";
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Статистика" description="Рекорды игроков сервера: время в игре, пройденные километры, алмазы, достижения и онлайн.">
+  <div class="container" data-stats-page>
+    <header class="page-head">
+      <h1>Статистика</h1>
+      <p>Все цифры — из статистики самого Minecraft на сервере. Ничего не считается вручную и не придумывается.</p>
+      <p class="muted" data-stats-updated></p>
+    </header>
+
+    <section class="section" aria-labelledby="totals-heading" data-stats-optional>
+      <h2 id="totals-heading" class="sr-only">Всего на сервере</h2>
+      <dl class="stat-tiles" data-stats-totals></dl>
+    </section>
+
+    <section class="section" aria-labelledby="boards-heading">
+      <div class="section-head">
+        <h2 id="boards-heading">Доска почёта</h2>
+        <p>Первые пять мест в каждой категории.</p>
+      </div>
+      <div class="boards" data-stats-boards>
+        <p class="muted">Загружаем рекорды…</p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="milestones-heading" data-stats-optional>
+      <div class="section-head">
+        <h2 id="milestones-heading">Кто был первым</h2>
+        <p>Главные события мира и игрок, который добрался до них раньше всех.</p>
+      </div>
+      <ul class="milestones" data-stats-milestones></ul>
+    </section>
+
+    <section class="section" aria-labelledby="history-heading">
+      <div class="section-head">
+        <h2 id="history-heading">Онлайн</h2>
+        <p>Сколько людей было на сервере. Разрывы на графике — время, когда сервер не работал.</p>
+      </div>
+      <OnlineChart hours={24} ranges />
+    </section>
+
+    <section class="section" aria-labelledby="players-heading" data-stats-optional>
+      <div class="section-head">
+        <h2 id="players-heading">Все игроки</h2>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" data-stats-table></table>
+      </div>
+    </section>
+  </div>
+</Base>

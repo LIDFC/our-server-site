@@ -1,0 +1,23 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Наши места" description="Постройки игроков сервера с координатами и ссылкой на карту мира.">
+  <div class="container">
+    <header class="page-head">
+      <h1>Наши места</h1>
+      <p>Дома, базы и всё, чем хочется похвастаться. У каждой постройки есть координаты, чтобы найти её в игре или на карте.</p>
+    </header>
+
+    <section class="section">
+      <div class="places" data-gallery aria-busy="true" aria-live="polite"></div>
+      <div class="notice" data-gallery-empty hidden>
+        <p><strong>Здесь пока пусто.</strong></p>
+        <p>
+          Построили что-то красивое? Сделайте скриншот (F2 в игре), запишите координаты (F3) и пришлите их администратору вместе
+          с названием — постройка появится в галерее.
+        </p>
+      </div>
+    </section>
+  </div>
+</Base>

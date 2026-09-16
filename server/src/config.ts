@@ -1,0 +1,170 @@
+import path from "node:path";
+
+/** Root of the project, relative paths in the environment are resolved against it. */
+export const PROJECT_ROOT = path.resolve(import.meta.dirname, "..", "..");
+
+export interface Config {
+  host: string;
+  port: number;
+  trustProxy: boolean;
+  serverName: string;
+  publicDir: string;
+  dataDir: string;
+  galleryDir: string;
+  minecraft: {
+    host: string;
+    port: number;
+    publicAddress: string;
+    serverDir: string;
+    worldName: string;
+    statusCacheSeconds: number;
+    statusTimeoutMs: number;
+    statsCacheSeconds: number;
+  };
+  history: {
+    intervalSeconds: number;
+    retentionDays: number;
+  };
+  map: {
+    /** public URL of squaremap, null while the map is not set up */
+    url: string | null;
+    world: string;
+  };
+  launcher: {
+    repo: string;
+    token: string | null;
+    cacheSeconds: number;
+  };
+  rateLimit: {
+    windowSeconds: number;
+    maxRequests: number;
+  };
+}
+
+type Env = Record<string, string | undefined>;
+
+export class ConfigError extends Error {}
+
+const HOSTNAME = /^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/** Reads and validates the configuration. Every problem is reported at once so a broken .env is fixed in one go. */
+export function loadConfig(env: Env = process.env): Config {
+  const problems: string[] = [];
+
+  const text = (name: string, fallback: string): string => {
+    const value = env[name]?.trim();
+    return value ? value : fallback;
+  };
+
+  const integer = (name: string, fallback: number, min: number, max: number): number => {
+    const raw = env[name]?.trim();
+    if (!raw) {
+      return fallback;
+    }
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < min || value > max) {
+      problems.push(`${name} must be an integer between ${min} and ${max}`);
+      return fallback;
+    }
+    return value;
+  };
+
+  const flag = (name: string, fallback: boolean): boolean => {
+    const raw = env[name]?.trim().toLowerCase();
+    if (!raw) {
+      return fallback;
+    }
+    if (["1", "true", "yes", "on"].includes(raw)) {
+      return true;
+    }
+    if (["0", "false", "no", "off"].includes(raw)) {
+      return false;
+    }
+    problems.push(`${name} must be true or false`);
+    return fallback;
+  };
+
+  const directory = (name: string, fallback: string): string => path.resolve(PROJECT_ROOT, text(name, fallback));
+
+  const hostname = (name: string, fallback: string): string => {
+    const value = text(name, fallback);
+    if (!HOSTNAME.test(value) && !IPV4.test(value)) {
+      problems.push(`${name} must be a host name or an IPv4 address`);
+    }
+    return value;
+  };
+
+  const worldName = text("MC_WORLD", "world");
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(worldName)) {
+    problems.push("MC_WORLD must be a plain folder name, for example world");
+  }
+
+  let mapUrl: string | null = null;
+  const rawMapUrl = text("MAP_URL", "");
+  if (rawMapUrl) {
+    try {
+      const url = new URL(rawMapUrl);
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error("unsupported protocol");
+      }
+      mapUrl = url.href.replace(/\/+$/, "");
+    } catch {
+      problems.push("MAP_URL must be an http(s) URL, for example https://map.vin-off.site");
+    }
+  }
+
+  const mapWorld = text("MAP_WORLD", "minecraft_overworld");
+  if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(mapWorld)) {
+    problems.push("MAP_WORLD must be a squaremap world name, for example minecraft_overworld");
+  }
+
+  const repo = text("LAUNCHER_REPO", "LIDFC/MkeiitLauncher");
+  if (!/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(repo)) {
+    problems.push("LAUNCHER_REPO must look like owner/repository");
+  }
+
+  const serverName = text("SERVER_NAME", "Our Server");
+  if (serverName.length > 60) {
+    problems.push("SERVER_NAME must be at most 60 characters");
+  }
+
+  const config: Config = {
+    host: text("HOST", "127.0.0.1"),
+    port: integer("PORT", 3000, 1, 65535),
+    trustProxy: flag("TRUST_PROXY", false),
+    serverName,
+    publicDir: directory("PUBLIC_DIR", "dist"),
+    dataDir: directory("DATA_DIR", "data"),
+    galleryDir: directory("GALLERY_DIR", "content/gallery"),
+    minecraft: {
+      host: hostname("MC_HOST", "127.0.0.1"),
+      port: integer("MC_PORT", 25565, 1, 65535),
+      publicAddress: hostname("MC_PUBLIC_ADDRESS", "mc.vin-off.site"),
+      serverDir: directory("MC_SERVER_DIR", "../minecraft"),
+      worldName,
+      statusCacheSeconds: integer("STATUS_CACHE_SECONDS", 15, 5, 600),
+      statusTimeoutMs: integer("STATUS_TIMEOUT_MS", 5000, 500, 30000),
+      statsCacheSeconds: integer("STATS_CACHE_SECONDS", 300, 30, 86400),
+    },
+    history: {
+      intervalSeconds: integer("HISTORY_INTERVAL_SECONDS", 300, 60, 3600),
+      retentionDays: integer("HISTORY_RETENTION_DAYS", 7, 1, 90),
+    },
+    map: { url: mapUrl, world: mapWorld },
+    launcher: {
+      repo,
+      token: text("GITHUB_TOKEN", "") || null,
+      cacheSeconds: integer("LAUNCHER_CACHE_SECONDS", 600, 60, 86400),
+    },
+    rateLimit: {
+      windowSeconds: integer("RATE_LIMIT_WINDOW_SECONDS", 60, 1, 3600),
+      maxRequests: integer("RATE_LIMIT_MAX_REQUESTS", 120, 1, 100000),
+    },
+  };
+
+  if (problems.length > 0) {
+    throw new ConfigError(`Invalid configuration:\n- ${problems.join("\n- ")}`);
+  }
+  return config;
+}

@@ -1,0 +1,143 @@
+---
+/**
+ * The lantern: live state of the Minecraft server. Its warm glow grows with the share of occupied slots and goes out
+ * when the server is down. Filled in by scripts/status.ts, nothing here is a placeholder value.
+ */
+---
+
+<section class="status-panel" data-status-panel data-state="loading" aria-labelledby="status-heading" aria-live="polite">
+  <h2 id="status-heading" class="sr-only">Состояние сервера</h2>
+  <p class="status-panel__state">
+    <span class="status-dot" aria-hidden="true"></span>
+    <span data-status-label>Проверяем сервер…</span>
+  </p>
+  <p class="status-panel__count" data-status-count>&nbsp;</p>
+  <ul class="player-list" data-status-players aria-label="Игроки на сервере"></ul>
+  <p class="status-panel__more muted" data-status-more hidden></p>
+  <dl class="status-panel__meta">
+    <div>
+      <dt>Версия</dt>
+      <dd data-status-version>—</dd>
+    </div>
+    <div>
+      <dt>Отклик</dt>
+      <dd data-status-response>—</dd>
+    </div>
+    <div>
+      <dt>Проверено</dt>
+      <dd data-status-checked>—</dd>
+    </div>
+  </dl>
+</section>
+
+<style is:global>
+  .status-panel {
+    --glow: 0;
+    position: relative;
+    display: grid;
+    gap: 1rem;
+    padding: clamp(1.5rem, 3vw, 2rem);
+    background: linear-gradient(180deg, var(--panel) 0%, var(--ground-raised) 100%);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
+    box-shadow:
+      0 0 0 1px rgb(226 165 91 / calc(var(--glow) * 0.18)),
+      0 18px calc(20px + var(--glow) * 70px) rgb(226 165 91 / calc(var(--glow) * 0.16));
+    transition: box-shadow 1.2s ease;
+    isolation: isolate;
+  }
+
+  /* the light source sits behind the top of the panel */
+  .status-panel::before {
+    content: "";
+    position: absolute;
+    inset: -1px -1px auto;
+    height: 55%;
+    z-index: -1;
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    background: radial-gradient(90% 100% at 50% 0%, rgb(226 165 91 / calc(var(--glow) * 0.14)), transparent 70%);
+    transition: opacity 1.2s ease;
+  }
+
+  .status-panel__state {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 600;
+  }
+
+  [data-state="online"] .status-panel__state {
+    color: var(--online);
+  }
+
+  [data-state="offline"] .status-panel__state,
+  [data-state="error"] .status-panel__state {
+    color: var(--ink-soft);
+  }
+
+  .status-panel__count {
+    font-size: clamp(1.75rem, 1.4rem + 1.4vw, 2.375rem);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    min-height: 1.15em;
+  }
+
+  [data-state="offline"] .status-panel__count,
+  [data-state="error"] .status-panel__count {
+    font-size: 1.375rem;
+    color: var(--ink-soft);
+  }
+
+  .player-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .player-list:empty {
+    display: none;
+  }
+
+  .player-chip {
+    padding: 0.2rem 0.6rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--ground);
+    font-size: 0.9375rem;
+  }
+
+  .player-list__empty {
+    color: var(--ink-soft);
+  }
+
+  .status-panel__more {
+    font-size: var(--text-small);
+  }
+
+  .status-panel__meta {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    justify-content: start;
+    gap: 0.25rem 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+    font-size: var(--text-small);
+  }
+
+  .status-panel__meta dt {
+    color: var(--ink-muted);
+  }
+
+  .status-panel__meta dd {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 26rem) {
+    .status-panel__meta {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>
