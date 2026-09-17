@@ -34,21 +34,23 @@ export interface LauncherRelease {
   otherFiles: ReleaseFile[];
 }
 
-// file names produced by .github/workflows/release.yml of the launcher repository
+// file names produced by .github/workflows/release.yml of the launcher repository;
+// releases from v1.1.0 on are named MkeiitLauncher-*, older ones PrismLauncher-*
+const PREFIX = "(?:MkeiitLauncher|PrismLauncher)";
 const VERSION = String.raw`v?\d[\w.]*`;
 const BUILDS: { id: DownloadId; pattern: RegExp }[] = [
-  { id: "windows-x64-setup", pattern: new RegExp(`^PrismLauncher-Windows-MSVC-Setup-${VERSION}\\.exe$`, "i") },
-  { id: "windows-x64-portable", pattern: new RegExp(`^PrismLauncher-Windows-MSVC-Portable-${VERSION}\\.zip$`, "i") },
-  { id: "windows-x64-zip", pattern: new RegExp(`^PrismLauncher-Windows-MSVC-${VERSION}\\.zip$`, "i") },
-  { id: "windows-arm64-setup", pattern: new RegExp(`^PrismLauncher-Windows-MSVC-arm64-Setup-${VERSION}\\.exe$`, "i") },
-  { id: "windows-arm64-portable", pattern: new RegExp(`^PrismLauncher-Windows-MSVC-arm64-Portable-${VERSION}\\.zip$`, "i") },
-  { id: "windows-arm64-zip", pattern: new RegExp(`^PrismLauncher-Windows-MSVC-arm64-${VERSION}\\.zip$`, "i") },
-  { id: "windows-mingw-setup", pattern: new RegExp(`^PrismLauncher-Windows-MinGW-w64-Setup-${VERSION}\\.exe$`, "i") },
-  { id: "windows-mingw-portable", pattern: new RegExp(`^PrismLauncher-Windows-MinGW-w64-Portable-${VERSION}\\.zip$`, "i") },
-  { id: "windows-mingw-zip", pattern: new RegExp(`^PrismLauncher-Windows-MinGW-w64-${VERSION}\\.zip$`, "i") },
-  { id: "macos-dmg", pattern: new RegExp(`^PrismLauncher-macOS-${VERSION}\\.dmg$`, "i") },
-  { id: "macos-zip", pattern: new RegExp(`^PrismLauncher-macOS-${VERSION}\\.zip$`, "i") },
-  { id: "source", pattern: new RegExp(`^PrismLauncher-${VERSION}\\.tar\\.gz$`, "i") },
+  { id: "windows-x64-setup", pattern: new RegExp(`^${PREFIX}-Windows-MSVC-Setup-${VERSION}\\.exe$`, "i") },
+  { id: "windows-x64-portable", pattern: new RegExp(`^${PREFIX}-Windows-MSVC-Portable-${VERSION}\\.zip$`, "i") },
+  { id: "windows-x64-zip", pattern: new RegExp(`^${PREFIX}-Windows-MSVC-${VERSION}\\.zip$`, "i") },
+  { id: "windows-arm64-setup", pattern: new RegExp(`^${PREFIX}-Windows-MSVC-arm64-Setup-${VERSION}\\.exe$`, "i") },
+  { id: "windows-arm64-portable", pattern: new RegExp(`^${PREFIX}-Windows-MSVC-arm64-Portable-${VERSION}\\.zip$`, "i") },
+  { id: "windows-arm64-zip", pattern: new RegExp(`^${PREFIX}-Windows-MSVC-arm64-${VERSION}\\.zip$`, "i") },
+  { id: "windows-mingw-setup", pattern: new RegExp(`^${PREFIX}-Windows-MinGW-w64-Setup-${VERSION}\\.exe$`, "i") },
+  { id: "windows-mingw-portable", pattern: new RegExp(`^${PREFIX}-Windows-MinGW-w64-Portable-${VERSION}\\.zip$`, "i") },
+  { id: "windows-mingw-zip", pattern: new RegExp(`^${PREFIX}-Windows-MinGW-w64-${VERSION}\\.zip$`, "i") },
+  { id: "macos-dmg", pattern: new RegExp(`^${PREFIX}-macOS-${VERSION}\\.dmg$`, "i") },
+  { id: "macos-zip", pattern: new RegExp(`^${PREFIX}-macOS-${VERSION}\\.zip$`, "i") },
+  { id: "source", pattern: new RegExp(`^${PREFIX}-${VERSION}\\.tar\\.gz$`, "i") },
 ];
 
 export function classifyAssets(assets: ReleaseFile[]): Pick<LauncherRelease, "downloads" | "otherFiles"> {

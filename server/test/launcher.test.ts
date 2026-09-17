@@ -68,6 +68,24 @@ describe("launcher release", () => {
     assert.equal(release.available, true);
   });
 
+  it("recognizes the renamed MkeiitLauncher files", () => {
+    const release = parseRelease(
+      releaseJson([
+        "MkeiitLauncher-Windows-MSVC-Setup-v1.1.0.exe",
+        "MkeiitLauncher-Windows-MSVC-Portable-v1.1.0.zip",
+        "MkeiitLauncher-Windows-MSVC-arm64-Setup-v1.1.0.exe",
+        "MkeiitLauncher-macOS-v1.1.0.dmg",
+        "MkeiitLauncher-v1.1.0.tar.gz",
+      ]),
+      "LIDFC/MkeiitLauncher",
+    );
+    assert.deepEqual(
+      release.downloads.map((download) => download.id),
+      ["windows-x64-setup", "windows-x64-portable", "windows-arm64-setup", "macos-dmg", "source"],
+    );
+    assert.equal(release.otherFiles.length, 0);
+  });
+
   it("drops download links that do not point to GitHub", () => {
     const json = releaseJson(["PrismLauncher-Windows-MSVC-Setup-v1.0.0.exe"]);
     json.assets[0]!.browser_download_url = "https://evil.example.com/launcher.exe";
