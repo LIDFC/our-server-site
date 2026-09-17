@@ -51,6 +51,19 @@ export interface Config {
       maxRequests: number;
     };
   };
+  skins: {
+    uploadDir: string;
+    maxUploadBytes: number;
+    /** how long a player waits between two uploads */
+    cooldownSeconds: number;
+    /** uploads are heavier than a normal request, so they have their own limit per address */
+    rateLimit: {
+      windowSeconds: number;
+      maxRequests: number;
+    };
+    /** public origin of the site, the stored skin URL is built from it */
+    siteUrl: string;
+  };
 }
 
 type Env = Record<string, string | undefined>;
@@ -141,6 +154,21 @@ export function loadConfig(env: Env = process.env): Config {
     problems.push("SERVER_NAME must be at most 60 characters");
   }
 
+  // the skin URL players give to SkinsRestorer is built from this address
+  let siteUrl = "https://mc.vin-off.site";
+  const rawSiteUrl = text("PUBLIC_SITE_URL", "");
+  if (rawSiteUrl) {
+    try {
+      const url = new URL(rawSiteUrl);
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error("unsupported protocol");
+      }
+      siteUrl = url.origin;
+    } catch {
+      problems.push("PUBLIC_SITE_URL must be an http(s) URL, for example https://mc.vin-off.site");
+    }
+  }
+
   // an empty code closes registration instead of letting everyone in
   const inviteCode = text("REGISTER_INVITE_CODE", "");
   if (inviteCode && inviteCode.length < 6) {
@@ -187,6 +215,16 @@ export function loadConfig(env: Env = process.env): Config {
         windowSeconds: integer("AUTH_RATE_LIMIT_WINDOW_SECONDS", 900, 10, 86400),
         maxRequests: integer("AUTH_RATE_LIMIT_MAX_REQUESTS", 10, 1, 1000),
       },
+    },
+    skins: {
+      uploadDir: directory("SKIN_UPLOAD_DIR", "uploads/skins"),
+      maxUploadBytes: integer("SKIN_MAX_UPLOAD_BYTES", 8 * 1024 * 1024, 64 * 1024, 32 * 1024 * 1024),
+      cooldownSeconds: integer("SKIN_UPLOAD_COOLDOWN_SECONDS", 20, 0, 3600),
+      rateLimit: {
+        windowSeconds: integer("SKIN_UPLOAD_LIMIT_WINDOW_SECONDS", 600, 10, 86400),
+        maxRequests: integer("SKIN_UPLOAD_LIMIT_MAX_REQUESTS", 10, 1, 10000),
+      },
+      siteUrl,
     },
   };
 

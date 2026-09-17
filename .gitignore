@@ -2,6 +2,7 @@ node_modules/
 dist/
 .astro/
 data/
+uploads/
 .dev/
 .env
 .env.*

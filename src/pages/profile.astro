@@ -3,17 +3,17 @@ import Base from "../layouts/Base.astro";
 ---
 
 <Base title="Профиль" description="Профиль игрока: логин, ник в Minecraft и пароль сайта.">
-  <div class="container" data-profile data-state="loading">
+  <div class="container account-page" data-profile data-state="loading">
     <header class="page-head">
       <h1>Профиль</h1>
-      <p>Аккаунт сайта. За ним будут сохраняться ваши скины.</p>
-      <p class="profile-state profile-state--loading">Загружаем аккаунт…</p>
-      <p class="profile-state profile-state--error">
+      <p>Аккаунт сайта. За ним сохраняются ваши скины.</p>
+      <p class="page-state page-state--loading">Загружаем аккаунт…</p>
+      <p class="page-state page-state--error">
         Не удалось загрузить аккаунт: сайт не отвечает. Обновите страницу или попробуйте чуть позже.
       </p>
     </header>
 
-    <section class="section" aria-label="Данные аккаунта">
+    <section class="section account-page__body" aria-label="Данные аккаунта">
       <div class="profile-grid">
         <div class="panel profile-card">
           <h2>Аккаунт</h2>
@@ -32,6 +32,7 @@ import Base from "../layouts/Base.astro";
             </div>
           </dl>
           <p class="muted">Логин поменять нельзя — он остаётся владельцем всего, что вы загрузите.</p>
+          <p><a class="text-link" href="/skins">Мои скины</a></p>
         </div>
 
         <div class="panel profile-card">

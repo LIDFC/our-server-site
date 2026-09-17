@@ -7,6 +7,7 @@ import { openDatabase } from "./db.ts";
 import {
   clientAddress,
   parseCookies,
+  readBinaryBody,
   readJsonBody,
   sameOrigin,
   securityHeaders,
@@ -21,6 +22,7 @@ import { createAccountService } from "./services/accounts.ts";
 import { createFileGalleryStore } from "./services/gallery.ts";
 import { createHistoryStore, startHistorySampler } from "./services/history.ts";
 import { createLauncherService } from "./services/launcher.ts";
+import { createSkinService } from "./services/skins.ts";
 import { buildLeaderboard, createStatsService } from "./services/stats.ts";
 import { createStatusService } from "./services/status.ts";
 
@@ -31,6 +33,8 @@ const SESSION_COOKIE = "os_session";
 /** registration, sign in and password changes get the strict limit; reading the current account does not */
 const GUARDED_AUTH_PATHS = new Set(["/api/auth/register", "/api/auth/login", "/api/auth/password"]);
 const SESSION_SWEEP_MS = 3_600_000;
+const SKIN_UPLOAD_PATH = "/api/skins";
+const SKIN_PUBLIC_PREFIX = "/skins/";
 
 export function createApp(config: Config) {
   const status = createStatusService(config);
@@ -40,8 +44,10 @@ export function createApp(config: Config) {
   const history = createHistoryStore(path.join(config.dataDir, "online-history.json"), config.history.retentionDays, config.history.intervalSeconds);
   const db = openDatabase(path.join(config.dataDir, "site.db"));
   const accounts = createAccountService(db, config);
+  const skins = createSkinService(db, config);
   const limiter = createRateLimiter(config.rateLimit);
   const authLimiter = createRateLimiter(config.auth.rateLimit);
+  const uploadLimiter = createRateLimiter(config.skins.rateLimit);
   const headers = securityHeaders(config.map.url);
 
   const sessionCookie = (token: string): string =>
@@ -157,6 +163,22 @@ export function createApp(config: Config) {
       sendJson(res, 200, { user: result.value });
     },
 
+    "/api/skins/delete": async (req, res) => {
+      const user = accounts.current(sessionToken(req));
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      const result = await skins.remove(user.id);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      res.statusCode = 204;
+      res.setHeader("Cache-Control", "no-store");
+      res.end();
+    },
+
     "/api/auth/password": async (req, res, body) => {
       const token = sessionToken(req);
       const user = accounts.current(token);
@@ -181,10 +203,11 @@ export function createApp(config: Config) {
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     const post = postRoutes[url.pathname];
+    const upload = url.pathname === SKIN_UPLOAD_PATH;
 
-    if (req.method !== "GET" && req.method !== "HEAD" && !(req.method === "POST" && post)) {
-      res.setHeader("Allow", post ? "POST" : "GET, HEAD");
-      sendError(res, 405, "method-not-allowed", post ? "Only POST is supported" : "Only GET and HEAD are supported");
+    if (req.method !== "GET" && req.method !== "HEAD" && !(req.method === "POST" && (post || upload))) {
+      res.setHeader("Allow", post || upload ? "POST" : "GET, HEAD");
+      sendError(res, 405, "method-not-allowed", post || upload ? "Only POST is supported" : "Only GET and HEAD are supported");
       return;
     }
 
@@ -228,6 +251,45 @@ export function createApp(config: Config) {
       return;
     }
 
+    if (upload) {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        sendError(res, 405, "method-not-allowed", "Only POST is supported");
+        return;
+      }
+      if (!sameOrigin(req)) {
+        sendError(res, 403, "bad-origin", "The request came from another site");
+        return;
+      }
+      // the account comes from the session, never from the request: an upload can only ever replace its own skin
+      const user = accounts.current(sessionToken(req));
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      const attempt = uploadLimiter.check(`ip:${address}`);
+      if (!attempt.allowed) {
+        res.setHeader("Retry-After", String(attempt.retryAfterSeconds));
+        sendError(res, 429, "rate-limited", "Too many uploads, try again later");
+        return;
+      }
+      const body = await readBinaryBody(req, config.skins.maxUploadBytes);
+      if (!body.ok) {
+        sendError(res, body.status, body.error, body.message);
+        return;
+      }
+      const declaredType = (req.headers["content-type"] ?? "").split(";")[0]?.trim().toLowerCase() || null;
+      const fileNameHeader = req.headers["x-skin-filename"];
+      const fileName = typeof fileNameHeader === "string" ? decodeURIComponent(fileNameHeader).slice(0, 200) : null;
+      const result = await skins.save(user.id, body.value, declaredType, fileName);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      sendJson(res, 201, { skin: result.value });
+      return;
+    }
+
     if (url.pathname === "/api/auth/me") {
       const user = accounts.current(sessionToken(req));
       if (!user) {
@@ -235,6 +297,20 @@ export function createApp(config: Config) {
         return;
       }
       sendJson(res, 200, { user });
+      return;
+    }
+
+    if (url.pathname === "/api/skins/me") {
+      const user = accounts.current(sessionToken(req));
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      sendJson(res, 200, {
+        skin: skins.forUser(user.id),
+        minecraftUsername: user.minecraftUsername,
+        limits: { maxBytes: config.skins.maxUploadBytes, sizes: ["64x64", "64x32"], types: ["image/png", "image/jpeg"] },
+      });
       return;
     }
 
@@ -246,6 +322,16 @@ export function createApp(config: Config) {
       }
       const result = await route(url);
       sendJson(res, result.status ?? 200, result.body, result.cacheSeconds);
+      return;
+    }
+
+    if (url.pathname.startsWith(SKIN_PUBLIC_PREFIX)) {
+      // only exact generated file names resolve, so there is no directory listing and no way out of the folder
+      const filePath = skins.filePath(url.pathname.slice(SKIN_PUBLIC_PREFIX.length));
+      // the name is random and the content never changes, so the URL can be cached forever
+      if (!filePath || !(await serveFile(req, res, filePath, 200, "public, max-age=31536000, immutable"))) {
+        sendError(res, 404, "not-found", "Skin not found");
+      }
       return;
     }
 
@@ -309,6 +395,7 @@ export function createApp(config: Config) {
       }
       limiter.stop();
       authLimiter.stop();
+      uploadLimiter.stop();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       db.close();
     },

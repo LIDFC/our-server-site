@@ -96,6 +96,36 @@ export async function readJsonBody(req: IncomingMessage, maxBytes = 2048): Promi
   return { ok: true, value: parsed as Record<string, unknown> };
 }
 
+export type BinaryBody = { ok: true; value: Buffer } | { ok: false; status: number; error: string; message: string };
+
+/**
+ * Reads a raw upload with a hard limit. The limit is enforced while the bytes arrive, not afterwards, so an oversized
+ * upload is dropped instead of being buffered.
+ */
+export async function readBinaryBody(req: IncomingMessage, maxBytes: number): Promise<BinaryBody> {
+  const tooLarge = { ok: false as const, status: 413, error: "file-too-large", message: `The file must be at most ${maxBytes} bytes` };
+  const declaredLength = Number(req.headers["content-length"] ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    return tooLarge;
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const part = chunk as Buffer;
+    size += part.length;
+    if (size > maxBytes) {
+      // stop reading and answer; Node closes the connection instead of keeping the rest of the upload alive
+      req.pause();
+      return tooLarge;
+    }
+    chunks.push(part);
+  }
+  if (size === 0) {
+    return { ok: false, status: 400, error: "empty-file", message: "The request had no file in it" };
+  }
+  return { ok: true, value: Buffer.concat(chunks) };
+}
+
 export function parseCookies(header: string | undefined): Record<string, string> {
   const cookies: Record<string, string> = {};
   for (const part of (header ?? "").split(";")) {

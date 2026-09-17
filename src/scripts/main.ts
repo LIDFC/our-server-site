@@ -4,6 +4,7 @@ import { initCopyButtons } from "./copy";
 import { initGallery } from "./gallery";
 import { initLauncherDownloads } from "./launcher";
 import { initMap } from "./map";
+import { initSkinsPage } from "./skins";
 import { initLeaderboardPreview, initStatsPage } from "./stats";
 import { initStatusPanels } from "./status";
 
@@ -11,6 +12,7 @@ import { initStatusPanels } from "./status";
 initAuthNav();
 initAuthForms();
 initProfilePage();
+initSkinsPage();
 initCopyButtons();
 initStatusPanels();
 initOnlineCharts();

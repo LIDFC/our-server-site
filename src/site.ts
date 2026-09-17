@@ -23,5 +23,6 @@ export const NAV = [
   { href: "/map", label: "Карта" },
   { href: "/stats", label: "Статистика" },
   { href: "/gallery", label: "Галерея" },
+  { href: "/skins", label: "Скины" },
   { href: "/rules", label: "Правила" },
 ];

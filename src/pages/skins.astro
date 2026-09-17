@@ -1,0 +1,100 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Мои скины" description="Загрузите свой скин Minecraft: он сохранится за вашим аккаунтом, а ссылку можно отдать SkinsRestorer.">
+  <div class="container account-page" data-skins data-state="loading">
+    <header class="page-head">
+      <h1>Мои скины</h1>
+      <p>Скин хранится на сайте и принадлежит вашему аккаунту. Ссылку ниже можно использовать в SkinsRestorer.</p>
+      <p class="page-state page-state--loading">Загружаем ваш скин…</p>
+      <p class="page-state page-state--error">Не удалось загрузить скин: сайт не отвечает. Обновите страницу или попробуйте позже.</p>
+    </header>
+
+    <section class="section account-page__body" aria-label="Скин аккаунта">
+      <div class="skin-layout">
+        <div class="panel skin-card">
+          <h2>Текущий скин</h2>
+          <div class="skin-preview" data-skin-preview hidden>
+            <img class="skin-preview__image" alt="Ваш загруженный скин" data-skin-image />
+          </div>
+          <p class="muted" data-skin-empty>Скин пока не загружен. Выберите файл справа — и он появится здесь.</p>
+          <dl class="profile-facts">
+            <div>
+              <dt>Ник в Minecraft</dt>
+              <dd data-skin-nick>—</dd>
+            </div>
+          </dl>
+          <dl class="profile-facts" data-skin-details hidden>
+            <div>
+              <dt>Текстура</dt>
+              <dd data-skin-size>—</dd>
+            </div>
+            <div>
+              <dt>Файл</dt>
+              <dd data-skin-source>—</dd>
+            </div>
+            <div>
+              <dt>Обновлён</dt>
+              <dd data-skin-updated>—</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="panel skin-card">
+          <h2>Загрузить скин</h2>
+          <form class="form" data-form="skin-upload" novalidate>
+            <div class="field">
+              <label for="skin-file">Файл скина</label>
+              <input id="skin-file" name="file" type="file" accept="image/png,image/jpeg" required />
+            </div>
+            <ul class="skin-rules">
+              <li>PNG или JPG/JPEG</li>
+              <li>не больше <span data-skin-limit>8 МБ</span></li>
+              <li>размер текстуры 64×64 или 64×32 пикселя</li>
+            </ul>
+            <p class="form-message" data-form-message data-kind="error" hidden></p>
+            <button class="button button--primary" type="submit">Загрузить скин</button>
+          </form>
+          <p class="muted">
+            JPG мы сами переводим в PNG: Minecraft и SkinsRestorer работают только с PNG-текстурами. В JPG нет
+            прозрачности, поэтому лучше сразу сохранять скин в PNG.
+          </p>
+          <p class="muted">Новый файл заменяет предыдущий: у аккаунта всегда один скин и одна ссылка.</p>
+        </div>
+
+        <div class="panel skin-card skin-card--wide" data-skin-links hidden>
+          <h2>Ссылка на скин</h2>
+          <div class="copy-address">
+            <span class="copy-address__label">Постоянная ссылка на PNG</span>
+            <div class="copy-address__row">
+              <code class="copy-address__value skin-url" data-skin-url></code>
+              <button class="button button--secondary button--small" type="button" data-copy data-copy-url>Копировать</button>
+              <span class="sr-only" role="status" data-copy-status></span>
+            </div>
+          </div>
+
+          <div class="copy-address">
+            <span class="copy-address__label">Команда для SkinsRestorer</span>
+            <div class="copy-address__row">
+              <code class="copy-address__value skin-url" data-skin-command></code>
+              <button class="button button--secondary button--small" type="button" data-copy data-copy-command>Копировать</button>
+              <span class="sr-only" role="status" data-copy-status></span>
+            </div>
+          </div>
+
+          <p class="muted">
+            Введите команду в игре или в консоли сервера, а затем примените скин:
+            <span class="code-chip">/skin set <span data-skin-name>os_…</span></span>. Имя скина сайт придумывает сам,
+            чтобы оно не пересеклось с чужим.
+          </p>
+
+          <form data-form="skin-delete" novalidate>
+            <p class="form-message" data-form-message data-kind="error" hidden></p>
+            <button class="button button--secondary" type="submit">Удалить скин с сайта</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </div>
+</Base>

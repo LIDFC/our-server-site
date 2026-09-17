@@ -545,20 +545,100 @@ kbd {
   font-weight: 500;
 }
 
-/* the page waits for /api/auth/me before it shows anything */
-[data-profile]:not([data-state="ready"]) .profile-grid,
-[data-profile] .profile-state--error,
-[data-profile]:not([data-state="loading"]) .profile-state--loading {
+/* pages that need an account wait for /api/auth/me before they show anything */
+.account-page:not([data-state="ready"]) .account-page__body,
+.account-page .page-state--error,
+.account-page:not([data-state="loading"]) .page-state--loading {
   display: none;
 }
 
-[data-profile][data-state="error"] .profile-state--error {
+.account-page[data-state="error"] .page-state--error {
   display: block;
   color: var(--ink-soft);
 }
 
-[data-profile] .profile-state--loading {
+.account-page .page-state--loading {
   color: var(--ink-muted);
+}
+
+/* skins */
+
+.skin-layout {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  align-items: start;
+}
+
+.skin-card {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+}
+
+.skin-card--wide {
+  grid-column: 1 / -1;
+}
+
+.skin-preview {
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  /* a light chequerboard shows which parts of the skin are transparent */
+  background-color: var(--panel);
+  background-image: linear-gradient(45deg, rgb(255 255 255 / 0.04) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.04) 75%),
+    linear-gradient(45deg, rgb(255 255 255 / 0.04) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.04) 75%);
+  background-position:
+    0 0,
+    8px 8px;
+  background-size: 16px 16px;
+}
+
+.skin-preview__image {
+  width: min(256px, 100%);
+  height: auto;
+  /* skins are 64 pixels wide, so they must stay crisp when scaled up */
+  image-rendering: pixelated;
+}
+
+.skin-rules {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.skin-url {
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+  white-space: normal;
+}
+
+.skin-card input[type="file"] {
+  padding: 0.55rem 0.7rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+
+.skin-card input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--ground-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
 }
 
 /* disclosure used by the FAQ */

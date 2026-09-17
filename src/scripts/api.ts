@@ -148,6 +148,58 @@ export async function postJson<T>(path: string, body: unknown): Promise<ApiResul
   return { ok: false, status: response.status, data: null, error: typeof error === "string" ? error : "unknown" };
 }
 
+export interface PublicSkin {
+  url: string;
+  width: number;
+  height: number;
+  fileSize: number;
+  sourceType: string;
+  /** true when a JPG upload was turned into a PNG texture */
+  converted: boolean;
+  originalFileName: string | null;
+  updatedAt: string;
+  skinName: string;
+  /** ready made SkinsRestorer command */
+  command: string;
+}
+
+export interface SkinState {
+  skin: PublicSkin | null;
+  minecraftUsername: string;
+  limits: { maxBytes: number; sizes: string[]; types: string[] };
+}
+
+/** Uploads the file as the request body: no form encoding, the server only ever sees the bytes and the type. */
+export async function postFile<T>(path: string, file: File): Promise<ApiResult<T>> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        Accept: "application/json",
+        // the name is only shown back to the player, the server never builds a path from it
+        "X-Skin-Filename": encodeURIComponent(file.name),
+      },
+      credentials: "same-origin",
+      body: file,
+    });
+  } catch {
+    return { ok: false, status: 0, data: null, error: "network" };
+  }
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (response.ok) {
+    return { ok: true, status: response.status, data: payload as T, error: null };
+  }
+  const error = (payload as { error?: unknown } | null)?.error;
+  return { ok: false, status: response.status, data: null, error: typeof error === "string" ? error : "unknown" };
+}
+
 /** The signed in account, or null when nobody is signed in. Throws only when the API itself is unreachable. */
 export async function getCurrentUser(): Promise<AuthUser | null> {
   const response = await fetch("/api/auth/me", { headers: { Accept: "application/json" }, credentials: "same-origin" });

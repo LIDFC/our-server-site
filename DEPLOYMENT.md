@@ -108,6 +108,9 @@ PUBLIC_SITE_URL=https://mc.vin-off.site
 # аккаунты, подробности в шаге 18
 REGISTER_INVITE_CODE=придумайте-секретный-код
 COOKIE_SECURE=true
+
+# скины, подробности в шаге 19
+SKIN_UPLOAD_DIR=/opt/our-server-site/uploads/skins
 ```
 
 Все переменные описаны в `.env.example`. При ошибке в `.env` сайт не запустится и перечислит все неверные значения в логе.
@@ -292,19 +295,21 @@ sudo systemctl restart our-server-site
 
 ## 16. Резервные копии
 
-У сайта ценны `.env`, папка `data` (история онлайна и база аккаунтов `site.db`) и галерея. Остальное восстанавливается из
-git. Копируйте `data` целиком: рядом с `site.db` лежат файлы `site.db-wal` и `site.db-shm`.
+У сайта ценны `.env`, папка `data` (история онлайна и база аккаунтов `site.db`), загруженные скины в `uploads` и
+галерея. Остальное восстанавливается из git. Копируйте `data` целиком: рядом с `site.db` лежат файлы `site.db-wal` и
+`site.db-shm`. Скины и база связаны, поэтому копируйте их одной командой — иначе после восстановления ссылка на скин
+будет вести в пустоту.
 
 ```bash
 mkdir -p /home/ubuntu/backups
 tar -czf /home/ubuntu/backups/our-server-site-$(date +%F).tar.gz \
-  -C /opt/our-server-site .env data content/gallery
+  -C /opt/our-server-site .env data uploads content/gallery
 ```
 
 Ежедневно по cron (`crontab -e`), с хранением последних 14 копий:
 
 ```
-30 4 * * * tar -czf /home/ubuntu/backups/our-server-site-$(date +\%F).tar.gz -C /opt/our-server-site .env data content/gallery && find /home/ubuntu/backups -name 'our-server-site-*.tar.gz' -mtime +14 -delete
+30 4 * * * tar -czf /home/ubuntu/backups/our-server-site-$(date +\%F).tar.gz -C /opt/our-server-site .env data uploads content/gallery && find /home/ubuntu/backups -name 'our-server-site-*.tar.gz' -mtime +14 -delete
 ```
 
 Тайлы карты копировать не нужно: squaremap отрисует их заново. Мир Minecraft резервируется отдельно.
@@ -351,6 +356,9 @@ sudo ss -tlnp | grep -E ':(80|443|3000|8080|25565)\b'
 | «Регистрация закрыта» | пустой `REGISTER_INVITE_CODE` в `.env` — после изменения перезапустите сайт |
 | Вход не запоминается | сайт открыт по `http` при `COOKIE_SECURE=true`: браузер не сохраняет `Secure`-cookie |
 | `SQLITE_CANTOPEN` в логе | нет прав на `DATA_DIR`: он должен принадлежать пользователю `ubuntu` и быть в `ReadWritePaths` |
+| Скин не загружается, в логе `EACCES` | нет прав на `SKIN_UPLOAD_DIR` или его нет в `ReadWritePaths` юнита (шаг 19) |
+| «Файл не является корректным Minecraft-скином» | картинка не 64×64 и не 64×32 или это не PNG/JPG — расширение роли не играет |
+| Ссылка на скин открывается, а в игре скин не меняется | команда `/sr createcustom` не выполнена или SkinsRestorer не видит домен: проверьте, что ссылка открывается без входа |
 
 ## 18. Аккаунты
 
@@ -397,3 +405,48 @@ curl -si -X POST https://mc.vin-off.site/api/auth/login \
 
 Затем зарегистрируйтесь через браузер на https://mc.vin-off.site/register с кодом приглашения: после этого в шапке сайта
 появится ваш ник, а страница профиля откроется без повторного входа.
+
+## 19. Скины
+
+Скины лежат обычными PNG-файлами на диске, в базе хранится только запись о владельце и ссылка.
+
+```bash
+mkdir -p /opt/our-server-site/uploads/skins
+chown -R ubuntu:ubuntu /opt/our-server-site/uploads
+# папка для записи, файлы только на чтение и никогда не исполняются
+chmod 750 /opt/our-server-site/uploads /opt/our-server-site/uploads/skins
+```
+
+Переменные в `.env`:
+
+| Переменная | Значение | Смысл |
+|---|---|---|
+| `SKIN_UPLOAD_DIR` | `/opt/our-server-site/uploads/skins` | где лежат файлы; путь наружу не попадает |
+| `PUBLIC_SITE_URL` | `https://mc.vin-off.site` | из него строится постоянная ссылка на скин |
+| `SKIN_MAX_UPLOAD_BYTES` | `8388608` | жёсткий предел на сервере, 8 МБ |
+| `SKIN_UPLOAD_COOLDOWN_SECONDS` | `20` | пауза между двумя загрузками одного аккаунта |
+| `SKIN_UPLOAD_LIMIT_WINDOW_SECONDS` / `SKIN_UPLOAD_LIMIT_MAX_REQUESTS` | `600` / `10` | не больше десяти загрузок за десять минут с адреса |
+
+Права и прокси:
+
+- папку `uploads` пишет только сервис (`ubuntu`); в systemd-юните она указана в `ReadWritePaths`, всё остальное вне
+  `data` и `uploads` остаётся только для чтения;
+- исполняемых файлов там быть не может: сайт принимает только PNG и JPG и пересохраняет их как PNG;
+- отдельной настройки прокси не нужно — `/skins/<имя>.png` отдаёт сам сайт через тот же `reverse_proxy` (Caddy) или
+  `proxy_pass` (nginx), с `Content-Type: image/png`. Каталог не листается: любой адрес, кроме точного имени файла,
+  отвечает 404. Если захотите отдавать файлы напрямую nginx, добавьте
+  `location /skins/ { alias /opt/our-server-site/uploads/skins/; autoindex off; }` — но это не обязательно;
+- новая таблица `skins` создаётся автоматически при первом запуске обновлённого сайта, отдельной команды миграции нет.
+
+Проверка после перезапуска:
+
+```bash
+# без входа — 401, каталог и чужие имена — 404
+curl -s -o /dev/null -w '%{http_code}\n' https://mc.vin-off.site/api/skins/me
+curl -s -o /dev/null -w '%{http_code}\n' https://mc.vin-off.site/skins/
+curl -s -o /dev/null -w '%{http_code}\n' "https://mc.vin-off.site/skins/../../data/site.db"
+```
+
+Затем на https://mc.vin-off.site/skins загрузите скин 64×64 и откройте показанную ссылку: браузер должен показать
+картинку с `Content-Type: image/png`. В игре останется выполнить показанную на странице команду
+`/sr createcustom os_<12 символов> "<ссылка>"` и применить скин: `/skin set os_<12 символов>`.

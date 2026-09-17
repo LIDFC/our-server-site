@@ -1,31 +1,6 @@
 import { getCurrentUser, postJson, type AuthUser } from "./api";
 import { formatDate } from "./format";
-
-/** Error codes of the API turned into something a player can act on. */
-const MESSAGES: Record<string, string> = {
-  "invalid-username": "Логин: от 3 до 20 символов, латинские буквы, цифры или _",
-  "username-reserved": "Такой логин занять нельзя, придумайте другой",
-  "username-taken": "Этот логин уже занят",
-  "invalid-password": "Пароль: от 8 до 128 символов",
-  "password-too-obvious": "Пароль не должен совпадать с логином",
-  "password-mismatch": "Пароли не совпадают",
-  "invalid-minecraft-username": "Ник Minecraft: от 3 до 16 символов, латинские буквы, цифры или _",
-  "minecraft-username-taken": "Этот ник уже привязан к другому аккаунту",
-  "invalid-invite": "Неверный код приглашения",
-  "registration-closed": "Регистрация закрыта. Спросите код приглашения у администратора",
-  "invalid-credentials": "Неверный логин или пароль",
-  unauthenticated: "Нужно войти в аккаунт",
-  "rate-limited": "Слишком много попыток. Подождите несколько минут и попробуйте снова",
-  "bad-origin": "Страница устарела. Обновите её и попробуйте снова",
-  "body-too-large": "Слишком длинные данные",
-  network: "Сайт не отвечает. Проверьте соединение и попробуйте снова",
-};
-
-const FALLBACK = "Не получилось. Попробуйте ещё раз";
-
-function messageFor(code: string | null): string {
-  return (code && MESSAGES[code]) || FALLBACK;
-}
+import { handleForm, messageFor, messageText, setMessage } from "./forms";
 
 /** Only local paths are followed after signing in, so a link cannot send anyone to another site. */
 function safeNext(): string {
@@ -39,59 +14,36 @@ function show(element: Element | null, visible: boolean): void {
   }
 }
 
-function setMessage(form: HTMLFormElement, text: string, kind: "error" | "success"): void {
-  const box = form.querySelector("[data-form-message]");
-  if (box instanceof HTMLElement) {
-    box.textContent = text;
-    box.dataset.kind = kind;
-    box.hidden = text.length === 0;
-  }
-}
-
-function values(form: HTMLFormElement): Record<string, string> {
-  const data = new FormData(form);
-  const result: Record<string, string> = {};
-  for (const [name, value] of data.entries()) {
-    if (typeof value === "string") {
-      result[name] = value;
-    }
-  }
-  return result;
-}
-
-/** Wires a form: one request at a time, errors in the form, no page reload. */
-function handleForm(form: HTMLFormElement, submit: (fields: Record<string, string>) => Promise<string | null>): void {
-  const button = form.querySelector("button[type=submit]");
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (form.dataset.busy === "true") {
-      return;
-    }
-    form.dataset.busy = "true";
-    if (button instanceof HTMLButtonElement) {
-      button.disabled = true;
-    }
-    setMessage(form, "", "error");
-    void submit(values(form))
-      .then((error) => {
-        if (error) {
-          setMessage(form, error, "error");
-        }
-      })
-      .finally(() => {
-        form.dataset.busy = "false";
-        if (button instanceof HTMLButtonElement) {
-          button.disabled = false;
-        }
-      });
-  });
-}
-
 let userRequest: Promise<AuthUser | null> | null = null;
 
-function currentUser(): Promise<AuthUser | null> {
+/** The signed in account, asked for once per page. */
+export function currentUser(): Promise<AuthUser | null> {
   userRequest ??= getCurrentUser();
   return userRequest;
+}
+
+export function rememberUser(user: AuthUser): void {
+  userRequest = Promise.resolve(user);
+  for (const name of document.querySelectorAll("[data-account-name]")) {
+    name.textContent = user.minecraftUsername;
+  }
+}
+
+/** Sends a page that needs an account to the sign in page, keeping the way back. */
+export function requireAccount(page: HTMLElement): Promise<AuthUser | null> {
+  return currentUser().then(
+    (user) => {
+      if (!user) {
+        location.replace(`/login?next=${encodeURIComponent(location.pathname)}`);
+        return null;
+      }
+      return user;
+    },
+    () => {
+      page.dataset.state = "error";
+      return null;
+    },
+  );
 }
 
 function renderAccount(user: AuthUser | null): void {
@@ -151,7 +103,7 @@ export function initAuthForms(): void {
   if (signUp instanceof HTMLFormElement) {
     handleForm(signUp, async (fields) => {
       if (fields.password !== fields.passwordConfirm) {
-        return MESSAGES["password-mismatch"]!;
+        return messageText("password-mismatch");
       }
       const result = await postJson<{ user: AuthUser }>("/api/auth/register", {
         username: fields.username,
@@ -189,24 +141,15 @@ export function initProfilePage(): void {
     if (nickInput instanceof HTMLInputElement) {
       nickInput.value = user.minecraftUsername;
     }
-    for (const name of document.querySelectorAll("[data-account-name]")) {
-      name.textContent = user.minecraftUsername;
-    }
+    rememberUser(user);
   };
 
-  void currentUser().then(
-    (user) => {
-      if (!user) {
-        location.replace(`/login?next=${encodeURIComponent(location.pathname)}`);
-        return;
-      }
+  void requireAccount(page).then((user) => {
+    if (user) {
       fill(user);
       page.dataset.state = "ready";
-    },
-    () => {
-      page.dataset.state = "error";
-    },
-  );
+    }
+  });
 
   const nickForm = page.querySelector("[data-form=profile-nick]");
   if (nickForm instanceof HTMLFormElement) {
@@ -216,7 +159,6 @@ export function initProfilePage(): void {
         return messageFor(result.error);
       }
       fill(result.data.user);
-      userRequest = Promise.resolve(result.data.user);
       setMessage(nickForm, "Ник обновлён", "success");
       return null;
     });
@@ -226,7 +168,7 @@ export function initProfilePage(): void {
   if (passwordForm instanceof HTMLFormElement) {
     handleForm(passwordForm, async (fields) => {
       if (fields.newPassword !== fields.newPasswordConfirm) {
-        return MESSAGES["password-mismatch"]!;
+        return messageText("password-mismatch");
       }
       const result = await postJson("/api/auth/password", { currentPassword: fields.currentPassword, newPassword: fields.newPassword });
       if (!result.ok) {

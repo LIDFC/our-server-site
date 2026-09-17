@@ -19,6 +19,7 @@ export default defineConfig({
         // changeOrigin stays off so the API sees the Host the browser used and can check the Origin of a POST
         "/api": { target: backend, changeOrigin: false },
         "/media": { target: backend, changeOrigin: false },
+        "/skins/": { target: backend, changeOrigin: false },
       },
     },
   },
