@@ -1,3 +1,4 @@
+import { initAuthForms, initAuthNav, initProfilePage } from "./auth";
 import { initOnlineCharts } from "./chart";
 import { initCopyButtons } from "./copy";
 import { initGallery } from "./gallery";
@@ -7,6 +8,9 @@ import { initLeaderboardPreview, initStatsPage } from "./stats";
 import { initStatusPanels } from "./status";
 
 // every module only acts on the elements of its own page
+initAuthNav();
+initAuthForms();
+initProfilePage();
 initCopyButtons();
 initStatusPanels();
 initOnlineCharts();

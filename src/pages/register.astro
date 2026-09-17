@@ -1,0 +1,85 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Регистрация" description="Регистрация на сайте по коду приглашения: скины сохраняются за вашим аккаунтом.">
+  <div class="container auth-page">
+    <section class="panel auth-card" aria-labelledby="register-heading">
+      <div class="auth-card__head">
+        <h1 id="register-heading">Регистрация</h1>
+        <p>Аккаунт нужен, чтобы ваши скины сохранялись за вами.</p>
+      </div>
+
+      <form class="form" data-form="register" novalidate>
+        <div class="field">
+          <label for="register-username">Логин</label>
+          <input
+            id="register-username"
+            name="username"
+            type="text"
+            autocomplete="username"
+            inputmode="latin"
+            minlength="3"
+            maxlength="20"
+            pattern="[A-Za-z0-9_]+"
+            spellcheck="false"
+            required
+          />
+          <p class="field__hint">От 3 до 20 символов: латинские буквы, цифры или _</p>
+        </div>
+
+        <div class="field">
+          <label for="register-nick">Ник в Minecraft</label>
+          <input
+            id="register-nick"
+            name="minecraftUsername"
+            type="text"
+            inputmode="latin"
+            minlength="3"
+            maxlength="16"
+            pattern="[A-Za-z0-9_]+"
+            spellcheck="false"
+            required
+          />
+          <p class="field__hint">Тот, под которым вы заходите на сервер. Позже его можно поменять в профиле.</p>
+        </div>
+
+        <div class="field">
+          <label for="register-password">Пароль</label>
+          <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
+          <p class="field__hint">Не меньше 8 символов. Придумайте новый, а не тот, что используете на других сайтах.</p>
+        </div>
+
+        <div class="field">
+          <label for="register-password-confirm">Пароль ещё раз</label>
+          <input
+            id="register-password-confirm"
+            name="passwordConfirm"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            maxlength="128"
+            required
+          />
+        </div>
+
+        <div class="field">
+          <label for="register-invite">Код приглашения</label>
+          <input id="register-invite" name="inviteCode" type="text" autocomplete="off" maxlength="100" spellcheck="false" required />
+          <p class="field__hint">Сервер для своих, код даёт администратор.</p>
+        </div>
+
+        <p class="form-message" data-form-message data-kind="error" hidden></p>
+
+        <button class="button button--primary" type="submit">Создать аккаунт</button>
+      </form>
+
+      <div class="auth-card__foot">
+        <p>Уже есть аккаунт? <a class="text-link" href="/login">Войдите</a>.</p>
+        <p>
+          Это аккаунт сайта. Пароль от игрового <span class="code-chip">/register</span> на сервере — другой, и вводить его здесь не нужно.
+        </p>
+      </div>
+    </section>
+  </div>
+</Base>

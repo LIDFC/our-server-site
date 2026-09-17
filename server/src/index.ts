@@ -1,9 +1,23 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 
+import { deleteExpiredSessions } from "./auth/sessions.ts";
 import { ConfigError, loadConfig, type Config } from "./config.ts";
-import { clientAddress, securityHeaders, sendError, sendJson, serveFile, staticCandidates } from "./http.ts";
+import { openDatabase } from "./db.ts";
+import {
+  clientAddress,
+  parseCookies,
+  readJsonBody,
+  sameOrigin,
+  securityHeaders,
+  sendError,
+  sendJson,
+  serializeCookie,
+  serveFile,
+  staticCandidates,
+} from "./http.ts";
 import { createRateLimiter } from "./rateLimit.ts";
+import { createAccountService } from "./services/accounts.ts";
 import { createFileGalleryStore } from "./services/gallery.ts";
 import { createHistoryStore, startHistorySampler } from "./services/history.ts";
 import { createLauncherService } from "./services/launcher.ts";
@@ -11,6 +25,12 @@ import { buildLeaderboard, createStatsService } from "./services/stats.ts";
 import { createStatusService } from "./services/status.ts";
 
 type Handler = (url: URL) => Promise<{ status?: number; body: unknown; cacheSeconds?: number }>;
+type PostHandler = (req: IncomingMessage, res: ServerResponse, body: Record<string, unknown>) => Promise<void>;
+
+const SESSION_COOKIE = "os_session";
+/** registration, sign in and password changes get the strict limit; reading the current account does not */
+const GUARDED_AUTH_PATHS = new Set(["/api/auth/register", "/api/auth/login", "/api/auth/password"]);
+const SESSION_SWEEP_MS = 3_600_000;
 
 export function createApp(config: Config) {
   const status = createStatusService(config);
@@ -18,8 +38,16 @@ export function createApp(config: Config) {
   const launcher = createLauncherService(config);
   const gallery = createFileGalleryStore(config.galleryDir);
   const history = createHistoryStore(path.join(config.dataDir, "online-history.json"), config.history.retentionDays, config.history.intervalSeconds);
+  const db = openDatabase(path.join(config.dataDir, "site.db"));
+  const accounts = createAccountService(db, config);
   const limiter = createRateLimiter(config.rateLimit);
+  const authLimiter = createRateLimiter(config.auth.rateLimit);
   const headers = securityHeaders(config.map.url);
+
+  const sessionCookie = (token: string): string =>
+    serializeCookie(SESSION_COOKIE, token, { maxAgeSeconds: config.auth.sessionTtlDays * 86_400, secure: config.auth.cookieSecure });
+  const clearedCookie = (): string => serializeCookie(SESSION_COOKIE, "", { maxAgeSeconds: 0, secure: config.auth.cookieSecure });
+  const sessionToken = (req: IncomingMessage): string => parseCookies(req.headers.cookie)[SESSION_COOKIE] ?? "";
 
   const routes: Record<string, Handler> = {
     "/api/health": async () => ({ body: { ok: true } }),
@@ -81,25 +109,133 @@ export function createApp(config: Config) {
     "/api/launcher/release": async () => ({ body: await launcher.latest(), cacheSeconds: 300 }),
   };
 
+  /**
+   * Account endpoints. The signed in user always comes from the session cookie, never from the request: there is no
+   * account id to change anywhere in this surface, so nobody can reach somebody else's account.
+   */
+  const postRoutes: Record<string, PostHandler> = {
+    "/api/auth/register": async (_req, res, body) => {
+      const result = await accounts.register(body);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      res.setHeader("Set-Cookie", sessionCookie(result.value.token));
+      sendJson(res, 201, { user: result.value.user });
+    },
+
+    "/api/auth/login": async (_req, res, body) => {
+      const result = await accounts.login(body);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      res.setHeader("Set-Cookie", sessionCookie(result.value.token));
+      sendJson(res, 200, { user: result.value.user });
+    },
+
+    "/api/auth/logout": async (req, res) => {
+      accounts.logout(sessionToken(req));
+      res.statusCode = 204;
+      res.setHeader("Set-Cookie", clearedCookie());
+      res.setHeader("Cache-Control", "no-store");
+      res.end();
+    },
+
+    "/api/auth/profile": async (req, res, body) => {
+      const token = sessionToken(req);
+      const user = accounts.current(token);
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      const result = accounts.updateMinecraftUsername(user.id, body);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      sendJson(res, 200, { user: result.value });
+    },
+
+    "/api/auth/password": async (req, res, body) => {
+      const token = sessionToken(req);
+      const user = accounts.current(token);
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      const result = await accounts.changePassword(user.id, token, body);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      res.statusCode = 204;
+      res.setHeader("Cache-Control", "no-store");
+      res.end();
+    },
+  };
+
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     for (const [name, value] of Object.entries(headers)) {
       res.setHeader(name, value);
     }
     const url = new URL(req.url ?? "/", "http://localhost");
+    const post = postRoutes[url.pathname];
 
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      res.setHeader("Allow", "GET, HEAD");
-      sendError(res, 405, "method-not-allowed", "Only GET and HEAD are supported");
+    if (req.method !== "GET" && req.method !== "HEAD" && !(req.method === "POST" && post)) {
+      res.setHeader("Allow", post ? "POST" : "GET, HEAD");
+      sendError(res, 405, "method-not-allowed", post ? "Only POST is supported" : "Only GET and HEAD are supported");
       return;
     }
 
+    const address = clientAddress(req, config.trustProxy);
     if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/media/")) {
-      const limit = limiter.check(clientAddress(req, config.trustProxy));
+      const limit = limiter.check(address);
       if (!limit.allowed) {
         res.setHeader("Retry-After", String(limit.retryAfterSeconds));
         sendError(res, 429, "rate-limited", "Too many requests, try again later");
         return;
       }
+    }
+
+    if (post) {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        sendError(res, 405, "method-not-allowed", "Only POST is supported");
+        return;
+      }
+      if (!sameOrigin(req)) {
+        sendError(res, 403, "bad-origin", "The request came from another site");
+        return;
+      }
+      const body = await readJsonBody(req);
+      if (!body.ok) {
+        sendError(res, body.status, body.error, body.message);
+        return;
+      }
+      if (GUARDED_AUTH_PATHS.has(url.pathname)) {
+        // brute force protection: per address, and per login so one account cannot be hammered from many addresses
+        const username = typeof body.value["username"] === "string" ? body.value["username"].trim().toLowerCase() : "";
+        const attempts = [authLimiter.check(`ip:${address}`), ...(username ? [authLimiter.check(`user:${username}`)] : [])];
+        const blocked = attempts.find((attempt) => !attempt.allowed);
+        if (blocked) {
+          res.setHeader("Retry-After", String(blocked.retryAfterSeconds));
+          sendError(res, 429, "rate-limited", "Too many attempts, try again later");
+          return;
+        }
+      }
+      await post(req, res, body.value);
+      return;
+    }
+
+    if (url.pathname === "/api/auth/me") {
+      const user = accounts.current(sessionToken(req));
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      sendJson(res, 200, { user });
+      return;
     }
 
     if (url.pathname.startsWith("/api/")) {
@@ -147,11 +283,15 @@ export function createApp(config: Config) {
   server.headersTimeout = 15_000;
 
   let stopSampler: (() => void) | null = null;
+  let sessionSweep: NodeJS.Timeout | null = null;
 
   return {
     server,
     async start(): Promise<void> {
       await history.load();
+      deleteExpiredSessions(db);
+      sessionSweep = setInterval(() => deleteExpiredSessions(db), SESSION_SWEEP_MS);
+      sessionSweep.unref();
       stopSampler = startHistorySampler(
         history,
         async () => {
@@ -164,8 +304,13 @@ export function createApp(config: Config) {
     },
     async stop(): Promise<void> {
       stopSampler?.();
+      if (sessionSweep) {
+        clearInterval(sessionSweep);
+      }
       limiter.stop();
+      authLimiter.stop();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      db.close();
     },
   };
 }
@@ -184,6 +329,12 @@ async function main(): Promise<void> {
   console.info(`[http] Listening on http://${config.host}:${config.port}`);
   if (!config.map.url) {
     console.info("[map] MAP_URL is not set, the site shows the map as not set up yet");
+  }
+  if (!config.auth.inviteCode) {
+    console.info("[auth] REGISTER_INVITE_CODE is not set, registration is closed");
+  }
+  if (!config.auth.cookieSecure) {
+    console.warn("[auth] COOKIE_SECURE is false, the session cookie also travels over plain http");
   }
 
   const shutdown = (signal: string): void => {

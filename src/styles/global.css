@@ -409,6 +409,158 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* forms: sign in, registration and the profile */
+
+.form {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.field > label {
+  color: var(--ink-soft);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+
+.field input {
+  min-height: 2.875rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field input:hover {
+  border-color: var(--ink-muted);
+}
+
+.field input:focus-visible {
+  border-color: var(--lamp);
+  outline-offset: 1px;
+}
+
+.field input:disabled {
+  opacity: 0.6;
+}
+
+.field__hint {
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.form-message {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  font-size: 0.9375rem;
+}
+
+.form-message[data-kind="error"] {
+  border-color: rgb(224 128 111 / 0.45);
+  color: var(--danger);
+}
+
+.form-message[data-kind="success"] {
+  border-color: rgb(124 196 149 / 0.45);
+  color: var(--online);
+}
+
+.auth-card {
+  max-width: 27rem;
+  margin-inline: auto;
+  padding: clamp(1.5rem, 4vw, 2.25rem);
+}
+
+.auth-card h1 {
+  font-size: clamp(1.75rem, 1.4rem + 1.4vw, 2.25rem);
+  letter-spacing: -0.02em;
+}
+
+.auth-card__head {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.75rem;
+}
+
+.auth-card__head p {
+  color: var(--ink-soft);
+}
+
+.auth-card__foot {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.auth-page {
+  padding-block: clamp(2.5rem, 6vw, 4.5rem) var(--section-gap);
+}
+
+/* profile */
+
+.profile-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  align-items: start;
+}
+
+.profile-card {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+}
+
+.profile-facts {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+}
+
+.profile-facts div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.profile-facts dt {
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.profile-facts dd {
+  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 500;
+}
+
+/* the page waits for /api/auth/me before it shows anything */
+[data-profile]:not([data-state="ready"]) .profile-grid,
+[data-profile] .profile-state--error,
+[data-profile]:not([data-state="loading"]) .profile-state--loading {
+  display: none;
+}
+
+[data-profile][data-state="error"] .profile-state--error {
+  display: block;
+  color: var(--ink-soft);
+}
+
+[data-profile] .profile-state--loading {
+  color: var(--ink-muted);
+}
+
 /* disclosure used by the FAQ */
 
 .faq {

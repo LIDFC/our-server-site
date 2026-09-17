@@ -30,6 +30,21 @@ const isCurrent = (href: string): boolean => (href === "/" ? path === "/" : path
       </ul>
     </nav>
 
+    <!-- the site is static, so the account state is filled in by src/scripts/auth.ts -->
+    <div class="site-account" data-account hidden>
+      <a class="site-account__link" href="/login" data-account-signin hidden>Войти</a>
+      <details class="site-account__menu" data-account-user hidden>
+        <summary>
+          <span class="site-account__name" data-account-name></span>
+          <span class="site-account__chevron" aria-hidden="true"></span>
+        </summary>
+        <div class="site-account__panel">
+          <a href="/profile">Профиль</a>
+          <button type="button" data-logout>Выйти</button>
+        </div>
+      </details>
+    </div>
+
     <a class="button button--primary button--small site-header__cta" href="/launcher#download">Скачать лаунчер</a>
 
     <details class="mobile-nav">
@@ -49,6 +64,13 @@ const isCurrent = (href: string): boolean => (href === "/" ? path === "/" : path
             ))
           }
         </ul>
+        <div class="mobile-nav__account" data-account hidden>
+          <a href="/login" data-account-signin hidden>Войти</a>
+          <div data-account-user hidden>
+            <a href="/profile"><span data-account-name></span> — профиль</a>
+            <button class="site-account__signout" type="button" data-logout>Выйти</button>
+          </div>
+        </div>
         <a class="button button--primary" href="/launcher#download">Скачать лаунчер</a>
       </nav>
     </details>
@@ -124,6 +146,115 @@ const isCurrent = (href: string): boolean => (href === "/" ? path === "/" : path
     color: var(--ink);
     box-shadow: inset 0 -2px 0 var(--lamp);
     border-radius: var(--radius-control) var(--radius-control) 0 0;
+  }
+
+  /* account entry point */
+
+  .site-account {
+    display: flex;
+    align-items: center;
+  }
+
+  .site-account__link,
+  .site-account__menu summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.375rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius-control);
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+    text-decoration: none;
+    cursor: pointer;
+    list-style: none;
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .site-account__menu {
+    position: relative;
+  }
+
+  .site-account__menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .site-account__link:hover,
+  .site-account__menu summary:hover {
+    color: var(--ink);
+    background: var(--panel);
+  }
+
+  .site-account__name {
+    max-width: 10rem;
+    overflow: hidden;
+    color: var(--ink);
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .site-account__chevron {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-right: 2px solid var(--ink-muted);
+    border-bottom: 2px solid var(--ink-muted);
+    transform: rotate(45deg) translateY(-2px);
+  }
+
+  .site-account__menu[open] .site-account__chevron {
+    transform: rotate(225deg) translateY(-1px);
+  }
+
+  .site-account__panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.4rem);
+    display: grid;
+    min-width: 11rem;
+    padding: 0.35rem;
+    background: var(--ground-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-panel);
+    box-shadow: 0 18px 30px rgb(0 0 0 / 0.45);
+  }
+
+  .site-account__panel a,
+  .site-account__panel button {
+    padding: 0.55rem 0.7rem;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: none;
+    color: var(--ink-soft);
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .site-account__panel a:hover,
+  .site-account__panel button:hover {
+    color: var(--ink);
+    background: var(--panel);
+  }
+
+  .site-header__cta {
+    white-space: nowrap;
+  }
+
+  /* the account block joined the row, so the header trims its spacing before it gives up the menu */
+  @media (max-width: 75rem) {
+    .site-header__inner {
+      gap: 0.75rem;
+    }
+
+    .site-nav ul {
+      gap: 0;
+    }
+
+    .site-nav a {
+      padding-inline: 0.6rem;
+    }
   }
 
   .mobile-nav {
@@ -207,8 +338,23 @@ const isCurrent = (href: string): boolean => (href === "/" ? path === "/" : path
     color: var(--lamp);
   }
 
+  .site-account__signout {
+    display: block;
+    width: 100%;
+    padding: 0.8rem 0.25rem;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: none;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 1.125rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
   @media (max-width: 60rem) {
     .site-nav,
+    .site-account,
     .site-header__cta {
       display: none;
     }

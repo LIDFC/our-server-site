@@ -63,6 +63,88 @@ export function sendError(res: ServerResponse, status: number, error: string, me
   sendJson(res, status, { error, message });
 }
 
+export type JsonBody = { ok: true; value: Record<string, unknown> } | { ok: false; status: number; error: string; message: string };
+
+/**
+ * Reads a small JSON object from the request. Anything that is not a JSON object, or is larger than maxBytes, is
+ * refused: the auth endpoints only ever take a handful of short fields.
+ */
+export async function readJsonBody(req: IncomingMessage, maxBytes = 2048): Promise<JsonBody> {
+  const contentType = (req.headers["content-type"] ?? "").split(";")[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") {
+    return { ok: false, status: 415, error: "unsupported-media-type", message: "Send application/json" };
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const part = chunk as Buffer;
+    size += part.length;
+    if (size > maxBytes) {
+      return { ok: false, status: 413, error: "body-too-large", message: "The request body is too large" };
+    }
+    chunks.push(part);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return { ok: false, status: 400, error: "invalid-body", message: "The request body is not valid JSON" };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, status: 400, error: "invalid-body", message: "The request body must be a JSON object" };
+  }
+  return { ok: true, value: parsed as Record<string, unknown> };
+}
+
+export function parseCookies(header: string | undefined): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  for (const part of (header ?? "").split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 1) {
+      continue;
+    }
+    const name = part.slice(0, separator).trim();
+    if (name && !(name in cookies)) {
+      cookies[name] = decodeURIComponent(part.slice(separator + 1).trim());
+    }
+  }
+  return cookies;
+}
+
+export interface CookieOptions {
+  maxAgeSeconds?: number;
+  secure?: boolean;
+  path?: string;
+}
+
+/** Session cookie: never readable from JavaScript and not sent from other sites. */
+export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
+  const parts = [`${name}=${encodeURIComponent(value)}`, `Path=${options.path ?? "/"}`, "HttpOnly", "SameSite=Lax"];
+  if (options.maxAgeSeconds !== undefined) {
+    parts.push(`Max-Age=${options.maxAgeSeconds}`);
+  }
+  if (options.secure) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
+
+/**
+ * Guards state changing requests: a browser always sends Origin on cross site POSTs, so rejecting a foreign Origin
+ * together with SameSite=Lax cookies is enough, no CSRF token needed. Clients without an Origin (curl) are allowed.
+ */
+export function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin || origin === "null") {
+    return !origin;
+  }
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
+
 /** Client address, taken from X-Real-IP only when the server runs behind a trusted reverse proxy. */
 export function clientAddress(req: IncomingMessage, trustProxy: boolean): string {
   if (trustProxy) {

@@ -16,8 +16,9 @@ export default defineConfig({
     build: { assetsInlineLimit: 0 },
     server: {
       proxy: {
-        "/api": backend,
-        "/media": backend,
+        // changeOrigin stays off so the API sees the Host the browser used and can check the Origin of a POST
+        "/api": { target: backend, changeOrigin: false },
+        "/media": { target: backend, changeOrigin: false },
       },
     },
   },

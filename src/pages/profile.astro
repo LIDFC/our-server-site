@@ -1,0 +1,90 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Профиль" description="Профиль игрока: логин, ник в Minecraft и пароль сайта.">
+  <div class="container" data-profile data-state="loading">
+    <header class="page-head">
+      <h1>Профиль</h1>
+      <p>Аккаунт сайта. За ним будут сохраняться ваши скины.</p>
+      <p class="profile-state profile-state--loading">Загружаем аккаунт…</p>
+      <p class="profile-state profile-state--error">
+        Не удалось загрузить аккаунт: сайт не отвечает. Обновите страницу или попробуйте чуть позже.
+      </p>
+    </header>
+
+    <section class="section" aria-label="Данные аккаунта">
+      <div class="profile-grid">
+        <div class="panel profile-card">
+          <h2>Аккаунт</h2>
+          <dl class="profile-facts">
+            <div>
+              <dt>Логин</dt>
+              <dd data-profile-username>—</dd>
+            </div>
+            <div>
+              <dt>Ник в Minecraft</dt>
+              <dd data-profile-nick>—</dd>
+            </div>
+            <div>
+              <dt>Аккаунт создан</dt>
+              <dd data-profile-created>—</dd>
+            </div>
+          </dl>
+          <p class="muted">Логин поменять нельзя — он остаётся владельцем всего, что вы загрузите.</p>
+        </div>
+
+        <div class="panel profile-card">
+          <h2>Ник в Minecraft</h2>
+          <form class="form" data-form="profile-nick" novalidate>
+            <div class="field">
+              <label for="profile-nick-input">Новый ник</label>
+              <input
+                id="profile-nick-input"
+                name="minecraftUsername"
+                type="text"
+                inputmode="latin"
+                minlength="3"
+                maxlength="16"
+                pattern="[A-Za-z0-9_]+"
+                spellcheck="false"
+                required
+              />
+              <p class="field__hint">Скины останутся за аккаунтом: сменить ник можно без потерь.</p>
+            </div>
+            <p class="form-message" data-form-message data-kind="error" hidden></p>
+            <button class="button button--secondary" type="submit">Сохранить ник</button>
+          </form>
+        </div>
+
+        <div class="panel profile-card">
+          <h2>Пароль сайта</h2>
+          <form class="form" data-form="profile-password" novalidate>
+            <div class="field">
+              <label for="profile-password-current">Текущий пароль</label>
+              <input id="profile-password-current" name="currentPassword" type="password" autocomplete="current-password" maxlength="128" required />
+            </div>
+            <div class="field">
+              <label for="profile-password-new">Новый пароль</label>
+              <input id="profile-password-new" name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
+            </div>
+            <div class="field">
+              <label for="profile-password-confirm">Новый пароль ещё раз</label>
+              <input
+                id="profile-password-confirm"
+                name="newPasswordConfirm"
+                type="password"
+                autocomplete="new-password"
+                minlength="8"
+                maxlength="128"
+                required
+              />
+            </div>
+            <p class="form-message" data-form-message data-kind="error" hidden></p>
+            <button class="button button--secondary" type="submit">Сменить пароль</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </div>
+</Base>

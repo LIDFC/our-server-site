@@ -13,6 +13,7 @@
     "dev:server": "node --watch --env-file-if-exists=.env server/src/index.ts",
     "build": "astro build",
     "start": "node --env-file-if-exists=.env server/src/index.ts",
+    "users": "node --env-file-if-exists=.env server/src/cli/users.ts",
     "typecheck": "tsc -p server/tsconfig.json",
     "test": "node --test \"server/test/**/*.test.ts\"",
     "check": "npm run typecheck && npm test && npm run build"

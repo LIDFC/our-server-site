@@ -1,0 +1,47 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Вход" description="Вход в аккаунт сайта: скины сохраняются за вашим аккаунтом.">
+  <div class="container auth-page">
+    <section class="panel auth-card" aria-labelledby="login-heading">
+      <div class="auth-card__head">
+        <h1 id="login-heading">Вход</h1>
+        <p>Аккаунт нужен, чтобы ваши скины сохранялись за вами.</p>
+      </div>
+
+      <form class="form" data-form="login" novalidate>
+        <div class="field">
+          <label for="login-username">Логин</label>
+          <input
+            id="login-username"
+            name="username"
+            type="text"
+            autocomplete="username"
+            inputmode="latin"
+            maxlength="20"
+            spellcheck="false"
+            required
+          />
+        </div>
+
+        <div class="field">
+          <label for="login-password">Пароль</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="128" required />
+        </div>
+
+        <p class="form-message" data-form-message data-kind="error" hidden></p>
+
+        <button class="button button--primary" type="submit">Войти</button>
+      </form>
+
+      <div class="auth-card__foot">
+        <p>Ещё нет аккаунта? <a class="text-link" href="/register">Зарегистрируйтесь</a> — понадобится код приглашения.</p>
+        <p>
+          Это аккаунт сайта. Пароль от игрового <span class="code-chip">/register</span> на сервере — другой, и менять его тут не нужно.
+        </p>
+        <p>Забыли пароль? Напишите администратору, он выдаст новый.</p>
+      </div>
+    </section>
+  </div>
+</Base>

@@ -39,6 +39,18 @@ export interface Config {
     windowSeconds: number;
     maxRequests: number;
   };
+  auth: {
+    /** shared registration code, null while registration is closed */
+    inviteCode: string | null;
+    /** false only for local development over plain http */
+    cookieSecure: boolean;
+    sessionTtlDays: number;
+    /** separate, much stricter limit for /api/auth/* */
+    rateLimit: {
+      windowSeconds: number;
+      maxRequests: number;
+    };
+  };
 }
 
 type Env = Record<string, string | undefined>;
@@ -129,6 +141,12 @@ export function loadConfig(env: Env = process.env): Config {
     problems.push("SERVER_NAME must be at most 60 characters");
   }
 
+  // an empty code closes registration instead of letting everyone in
+  const inviteCode = text("REGISTER_INVITE_CODE", "");
+  if (inviteCode && inviteCode.length < 6) {
+    problems.push("REGISTER_INVITE_CODE must be at least 6 characters, or empty to close registration");
+  }
+
   const config: Config = {
     host: text("HOST", "127.0.0.1"),
     port: integer("PORT", 3000, 1, 65535),
@@ -160,6 +178,15 @@ export function loadConfig(env: Env = process.env): Config {
     rateLimit: {
       windowSeconds: integer("RATE_LIMIT_WINDOW_SECONDS", 60, 1, 3600),
       maxRequests: integer("RATE_LIMIT_MAX_REQUESTS", 120, 1, 100000),
+    },
+    auth: {
+      inviteCode: inviteCode || null,
+      cookieSecure: flag("COOKIE_SECURE", true),
+      sessionTtlDays: integer("SESSION_TTL_DAYS", 30, 1, 365),
+      rateLimit: {
+        windowSeconds: integer("AUTH_RATE_LIMIT_WINDOW_SECONDS", 900, 10, 86400),
+        maxRequests: integer("AUTH_RATE_LIMIT_MAX_REQUESTS", 10, 1, 1000),
+      },
     },
   };
 

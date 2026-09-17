@@ -104,6 +104,62 @@ export interface GalleryItem {
   addedAt: string | null;
 }
 
+export interface AuthUser {
+  id: number;
+  username: string;
+  minecraftUsername: string;
+  createdAt: string;
+}
+
+export interface ApiResult<T> {
+  ok: boolean;
+  status: number;
+  data: T | null;
+  /** error code of the API, or "network" when the request never arrived */
+  error: string | null;
+}
+
+/** Sends a JSON body and never throws: forms show the error code instead. */
+export async function postJson<T>(path: string, body: unknown): Promise<ApiResult<T>> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return { ok: false, status: 0, data: null, error: "network" };
+  }
+  if (response.status === 204) {
+    return { ok: true, status: 204, data: null, error: null };
+  }
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (response.ok) {
+    return { ok: true, status: response.status, data: payload as T, error: null };
+  }
+  const error = (payload as { error?: unknown } | null)?.error;
+  return { ok: false, status: response.status, data: null, error: typeof error === "string" ? error : "unknown" };
+}
+
+/** The signed in account, or null when nobody is signed in. Throws only when the API itself is unreachable. */
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  const response = await fetch("/api/auth/me", { headers: { Accept: "application/json" }, credentials: "same-origin" });
+  if (response.status === 401) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`/api/auth/me answered ${response.status}`);
+  }
+  return ((await response.json()) as { user: AuthUser }).user;
+}
+
 export async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { Accept: "application/json" } });
   if (!response.ok) {
