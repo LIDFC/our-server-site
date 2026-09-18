@@ -45,6 +45,17 @@ const MIGRATIONS: string[] = [
      updated_at TEXT NOT NULL
    );
    CREATE INDEX skins_user ON skins(user_id);`,
+
+  /*
+   * A skin name players actually type in Minecraft, and the Minecraft UUID of an account. SQLite cannot add a column
+   * with a constraint, so the uniqueness lives in an index and the values are filled in by the code.
+   */
+  `ALTER TABLE skins ADD COLUMN skin_name TEXT;
+   ALTER TABLE skins ADD COLUMN skin_name_lower TEXT;
+   UPDATE skins SET skin_name = 'os' || substr(stored_filename, 1, 6), skin_name_lower = 'os' || substr(stored_filename, 1, 6);
+   CREATE UNIQUE INDEX skins_name ON skins(skin_name_lower);
+   ALTER TABLE users ADD COLUMN minecraft_uuid TEXT;
+   CREATE UNIQUE INDEX users_minecraft_uuid ON users(minecraft_uuid);`,
 ];
 
 export function schemaVersion(db: Database): number {

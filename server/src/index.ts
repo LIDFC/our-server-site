@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 
@@ -22,7 +23,9 @@ import { createAccountService } from "./services/accounts.ts";
 import { createFileGalleryStore } from "./services/gallery.ts";
 import { createHistoryStore, startHistorySampler } from "./services/history.ts";
 import { createLauncherService } from "./services/launcher.ts";
+import { createMinecraftDirectory } from "./services/minecraft.ts";
 import { createSkinService } from "./services/skins.ts";
+import { createSkinSync } from "./services/skinSync.ts";
 import { buildLeaderboard, createStatsService } from "./services/stats.ts";
 import { createStatusService } from "./services/status.ts";
 
@@ -45,6 +48,8 @@ export function createApp(config: Config) {
   const db = openDatabase(path.join(config.dataDir, "site.db"));
   const accounts = createAccountService(db, config);
   const skins = createSkinService(db, config);
+  const minecraftDirectory = createMinecraftDirectory(config);
+  const skinSync = createSkinSync(accounts, skins, minecraftDirectory);
   const limiter = createRateLimiter(config.rateLimit);
   const authLimiter = createRateLimiter(config.auth.rateLimit);
   const uploadLimiter = createRateLimiter(config.skins.rateLimit);
@@ -161,6 +166,53 @@ export function createApp(config: Config) {
         return;
       }
       sendJson(res, 200, { user: result.value });
+    },
+
+    "/api/skins/name": async (req, res, body) => {
+      const user = accounts.current(sessionToken(req));
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      const result = skins.rename(user.id, body["skinName"]);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      sendJson(res, 200, { skin: result.value });
+    },
+
+    /**
+     * Server to server: the Minecraft plugin reports that a player ran /skin clear. Authenticated with a shared token,
+     * never reachable from a browser, and safe to repeat.
+     */
+    "/api/internal/minecraft/skin-cleared": async (req, res, body) => {
+      if (!config.minecraft.apiToken) {
+        sendError(res, 503, "integration-disabled", "The Minecraft integration is not configured");
+        return;
+      }
+      if (req.headers.origin) {
+        // browsers always send Origin on a POST, so this endpoint is for the game server only
+        sendError(res, 403, "browser-not-allowed", "This endpoint is not for browsers");
+        return;
+      }
+      const header = req.headers.authorization ?? "";
+      const provided = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+      const expected = config.minecraft.apiToken;
+      const sameLength = provided.length === expected.length;
+      // compare a padded copy so the check takes the same time whatever the token looks like
+      const size = Math.max(provided.length, expected.length, 64);
+      const left = Buffer.alloc(size);
+      const right = Buffer.alloc(size);
+      left.write(provided);
+      right.write(expected);
+      if (!timingSafeEqual(left, right) || !sameLength) {
+        console.warn(`[minecraft] Rejected a skin sync request with a wrong token from ${clientAddress(req, config.trustProxy)}`);
+        sendError(res, 401, "unauthorized", "A valid integration token is required");
+        return;
+      }
+      const answer = await skinSync.clear(body);
+      sendJson(res, answer.status, answer.body);
     },
 
     "/api/skins/delete": async (req, res) => {

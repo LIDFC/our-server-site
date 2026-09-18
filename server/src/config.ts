@@ -20,6 +20,8 @@ export interface Config {
     statusCacheSeconds: number;
     statusTimeoutMs: number;
     statsCacheSeconds: number;
+    /** shared secret the Minecraft plugin sends, null while the integration is switched off */
+    apiToken: string | null;
   };
   history: {
     intervalSeconds: number;
@@ -169,6 +171,12 @@ export function loadConfig(env: Env = process.env): Config {
     }
   }
 
+  // without a token the Minecraft integration stays closed, an empty one would accept anybody
+  const minecraftApiToken = text("MINECRAFT_API_TOKEN", "");
+  if (minecraftApiToken && minecraftApiToken.length < 24) {
+    problems.push("MINECRAFT_API_TOKEN must be at least 24 characters, or empty to switch the Minecraft integration off");
+  }
+
   // an empty code closes registration instead of letting everyone in
   const inviteCode = text("REGISTER_INVITE_CODE", "");
   if (inviteCode && inviteCode.length < 6) {
@@ -192,6 +200,7 @@ export function loadConfig(env: Env = process.env): Config {
       statusCacheSeconds: integer("STATUS_CACHE_SECONDS", 15, 5, 600),
       statusTimeoutMs: integer("STATUS_TIMEOUT_MS", 5000, 500, 30000),
       statsCacheSeconds: integer("STATS_CACHE_SECONDS", 300, 30, 86400),
+      apiToken: minecraftApiToken || null,
     },
     history: {
       intervalSeconds: integer("HISTORY_INTERVAL_SECONDS", 300, 60, 3600),

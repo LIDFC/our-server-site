@@ -122,7 +122,8 @@ describe("skin API", () => {
     assert.equal(skin.converted, false);
     assert.equal(skin.originalFileName, "steve.png");
     assert.match(String(skin.url), /^https:\/\/mc\.vin-off\.site\/skins\/[0-9a-f]{32}\.png$/);
-    assert.match(String(skin.skinName), /^os_[0-9a-f]{12}$/);
+    // the default name is the player's nickname, so /skin levplays is easy to remember
+    assert.equal(skin.skinName, "levplays");
     assert.equal(skin.command, `/sr createcustom ${String(skin.skinName)} "${String(skin.url)}"`);
 
     const stored = new URL(String(skin.url)).pathname;

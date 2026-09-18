@@ -28,6 +28,12 @@ export interface SignedIn {
 
 export interface AccountService {
   registrationOpen(): boolean;
+  /** Account linked to a Minecraft UUID, the identifier the Minecraft server is sure about. */
+  findByMinecraftUuid(uuid: string): PublicUser | null;
+  findByMinecraftUsername(name: string): PublicUser | null;
+  /** Remembers the UUID of an account. Returns false when another account already holds it. */
+  linkMinecraftUuid(userId: number, uuid: string): boolean;
+  minecraftUuidOf(userId: number): string | null;
   register(body: Record<string, unknown>): Promise<Result<SignedIn>>;
   login(body: Record<string, unknown>): Promise<Result<SignedIn>>;
   logout(token: string): void;
@@ -69,6 +75,33 @@ export function createAccountService(db: Database, config: Config): AccountServi
 
   return {
     registrationOpen: () => inviteCode !== null,
+
+    findByMinecraftUuid(uuid) {
+      const row = db.prepare("SELECT id, username, minecraft_username, created_at FROM users WHERE minecraft_uuid = ?").get(uuid);
+      return row ? toPublicUser(row) : null;
+    },
+
+    findByMinecraftUsername(name) {
+      const row = db.prepare("SELECT id, username, minecraft_username, created_at FROM users WHERE minecraft_username_lower = ?").get(name.toLowerCase());
+      return row ? toPublicUser(row) : null;
+    },
+
+    linkMinecraftUuid(userId, uuid) {
+      try {
+        db.prepare("UPDATE users SET minecraft_uuid = ?, updated_at = ? WHERE id = ?").run(uuid, new Date().toISOString(), userId);
+        return true;
+      } catch (error) {
+        // the unique index says the UUID belongs to another account, which is a conflict to report, not to overwrite
+        console.warn(`[accounts] Could not link a Minecraft UUID to account ${userId}: ${error}`);
+        return false;
+      }
+    },
+
+    minecraftUuidOf(userId) {
+      const row = db.prepare("SELECT minecraft_uuid FROM users WHERE id = ?").get(userId);
+      const uuid = row?.["minecraft_uuid"];
+      return typeof uuid === "string" ? uuid : null;
+    },
 
     async register(body) {
       if (inviteCode === null) {

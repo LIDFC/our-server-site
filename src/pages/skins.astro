@@ -17,7 +17,7 @@ import Base from "../layouts/Base.astro";
           <div class="skin-stage" data-skin-preview hidden>
             <img class="skin-stage__image" alt="Ваш скин" data-skin-image />
           </div>
-          <p class="skin-stage skin-stage--empty" data-skin-empty>Скина пока нет</p>
+          <p class="skin-stage skin-stage--empty" data-skin-empty>У вас пока нет сохранённого скина</p>
 
           <dl class="skin-facts">
             <div class="skin-facts__row">
@@ -61,7 +61,33 @@ import Base from "../layouts/Base.astro";
           </section>
 
           <section class="skin-block" data-skin-links hidden aria-labelledby="skin-link-heading">
-            <h2 id="skin-link-heading">Ссылка и команда</h2>
+            <h2 id="skin-link-heading">Имя, ссылка и команда</h2>
+
+            <form class="skin-form skin-name" data-form="skin-name" novalidate>
+              <div class="skin-link__head">
+                <label class="skin-link__label" for="skin-name-input">Имя скина в игре</label>
+              </div>
+              <div class="skin-name__row">
+                <input
+                  id="skin-name-input"
+                  name="skinName"
+                  type="text"
+                  inputmode="latin"
+                  minlength="3"
+                  maxlength="16"
+                  pattern="[A-Za-z0-9_]+"
+                  spellcheck="false"
+                  autocomplete="off"
+                  required
+                />
+                <button class="button button--secondary button--small" type="submit">Сохранить имя</button>
+              </div>
+              <p class="skin-note">
+                Это имя вы вводите в игре: <span class="code-chip">/skin set <span data-skin-name>—</span></span>. Можно взять любое
+                свободное: 3–16 символов, латиница, цифры или _.
+              </p>
+              <p class="form-message" data-form-message data-kind="error" hidden></p>
+            </form>
 
             <div class="skin-link">
               <div class="skin-link__head">
@@ -80,8 +106,8 @@ import Base from "../layouts/Base.astro";
               </div>
               <code class="skin-link__value" data-skin-command></code>
               <p class="skin-note">
-                Выполните её в игре или в консоли сервера, затем примените скин:
-                <span class="code-chip">/skin set <span data-skin-name>os_…</span></span>
+                Выполните её один раз после каждой загрузки нового файла, затем применяйте скин командой
+                <span class="code-chip">/skin set <span data-skin-name>—</span></span>.
               </p>
             </div>
 

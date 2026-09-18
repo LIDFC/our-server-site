@@ -112,7 +112,13 @@ export function initSkinsPage(): void {
     setText(page, "updated", `${formatDate(skin.updatedAt)}, ${formatTime(skin.updatedAt)}`);
     setText(page, "url", skin.url);
     setText(page, "command", skin.command);
-    setText(page, "name", skin.skinName);
+    for (const element of page.querySelectorAll("[data-skin-name]")) {
+      element.textContent = skin.skinName;
+    }
+    const nameInput = page.querySelector("input[name=skinName]");
+    if (nameInput instanceof HTMLInputElement && document.activeElement !== nameInput) {
+      nameInput.value = skin.skinName;
+    }
     for (const button of page.querySelectorAll<HTMLButtonElement>("[data-copy-url]")) {
       button.dataset.copy = skin.url;
     }
@@ -161,6 +167,19 @@ export function initSkinsPage(): void {
         result.data.skin.converted ? "Скин загружен и сохранён как PNG" : "Скин загружен",
         "success",
       );
+      return null;
+    });
+  }
+
+  const nameForm = page.querySelector("[data-form=skin-name]");
+  if (nameForm instanceof HTMLFormElement) {
+    handleForm(nameForm, async (fields) => {
+      const result = await postJson<{ skin: PublicSkin }>("/api/skins/name", { skinName: fields.skinName });
+      if (!result.ok || !result.data) {
+        return messageFor(result.error);
+      }
+      render(result.data.skin);
+      setMessage(nameForm, `Готово: теперь скин применяется командой /skin set ${result.data.skin.skinName}`, "success");
       return null;
     });
   }
