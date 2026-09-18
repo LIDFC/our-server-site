@@ -561,32 +561,35 @@ kbd {
   color: var(--ink-muted);
 }
 
-/* skins */
+/*
+ * skins: the skin itself is the subject, so it gets its own narrow rail on the left, and everything a player does with
+ * it lives in one panel on the right. Two explicit columns, never an auto-fit grid that can leave an empty slot.
+ */
 
-.skin-layout {
+.skin-board {
   display: grid;
-  gap: 1.25rem;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  /* minmax(0, …) keeps a long file name or URL from widening the column past the screen */
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(1.5rem, 3vw, 2.5rem);
   align-items: start;
 }
 
-.skin-card {
-  display: grid;
-  gap: 1rem;
-  padding: clamp(1.25rem, 3vw, 1.75rem);
+@media (min-width: 60rem) {
+  .skin-board {
+    grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+  }
 }
 
-.skin-card--wide {
-  grid-column: 1 / -1;
-}
-
-.skin-preview {
+.skin-stage {
   display: grid;
   place-items: center;
-  padding: 1.25rem;
+  /* stacked on one column the frame must not stretch across the whole page */
+  max-width: 20rem;
+  margin: 0;
+  padding: clamp(1rem, 3vw, 1.5rem);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
-  /* a light chequerboard shows which parts of the skin are transparent */
+  /* a faint chequerboard shows which parts of the skin are transparent */
   background-color: var(--panel);
   background-image: linear-gradient(45deg, rgb(255 255 255 / 0.04) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.04) 75%),
     linear-gradient(45deg, rgb(255 255 255 / 0.04) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.04) 75%);
@@ -596,49 +599,192 @@ kbd {
   background-size: 16px 16px;
 }
 
-.skin-preview__image {
-  width: min(256px, 100%);
+.skin-stage--empty {
+  min-height: 11rem;
+  align-content: center;
+  border-style: dashed;
+  background-image: none;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.skin-stage__image {
+  width: 100%;
+  max-width: 14rem;
   height: auto;
-  /* skins are 64 pixels wide, so they must stay crisp when scaled up */
+  /* a skin is 64 pixels wide: keep it crisp instead of blurring it when it scales up */
   image-rendering: pixelated;
 }
 
-.skin-rules {
+.skin-facts {
   display: grid;
-  gap: 0.35rem;
-  margin: 0;
-  padding-left: 1.15rem;
+  margin-top: 1.25rem;
+}
+
+.skin-facts__more {
+  display: grid;
+}
+
+.skin-facts__row {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.skin-facts dt {
   color: var(--ink-muted);
   font-size: var(--text-small);
 }
 
-.skin-url {
+.skin-facts dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 500;
   overflow-wrap: anywhere;
-  font-size: 0.9375rem;
-  white-space: normal;
 }
 
-.skin-card input[type="file"] {
-  padding: 0.55rem 0.7rem;
+.skin-work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+
+.skin-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.1rem;
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+}
+
+.skin-block + .skin-block {
+  border-top: 1px solid var(--line);
+}
+
+.skin-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+/* a button in the form takes the width of its label, not of the column */
+.skin-form > button {
+  justify-self: start;
+}
+
+/* file picker: a real input, hidden inside its label, so the page can speak Russian and accept a dropped file */
+
+.skin-drop {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.8rem 1rem;
   border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-panel);
   background: var(--panel);
-  color: var(--ink-soft);
-  font: inherit;
-  font-size: var(--text-small);
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
 }
 
-.skin-card input[type="file"]::file-selector-button {
-  margin-right: 0.75rem;
-  padding: 0.4rem 0.8rem;
+.skin-drop input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.skin-drop:hover,
+.skin-drop:focus-within {
+  border-color: var(--lamp);
+  background: var(--panel-hover);
+}
+
+.skin-drop:focus-within {
+  outline: 2px solid var(--lamp);
+  outline-offset: 3px;
+}
+
+.skin-drop[data-dragging="true"] {
+  border-color: var(--lamp);
+  background: var(--lamp-wash);
+}
+
+.skin-drop__action {
+  flex: none;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--ground-raised);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+
+.skin-drop__name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skin-drop__name[data-chosen="true"] {
+  color: var(--ink);
+  font-family: var(--font-mono);
+}
+
+.skin-meta,
+.skin-note {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.skin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem 1.25rem;
+}
+
+.skin-actions .skin-note {
+  flex: 1 1 16rem;
+  max-width: 40ch;
+}
+
+.skin-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+}
+
+.skin-link__label {
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.skin-link__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+/* the value gets the whole width, so a long URL stays on one line and the command wraps at most once */
+.skin-link__value {
+  display: block;
+  padding: 0.55rem 0.8rem;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-control);
   background: var(--ground-raised);
   color: var(--ink);
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 /* disclosure used by the FAQ */

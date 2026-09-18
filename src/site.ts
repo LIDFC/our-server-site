@@ -19,10 +19,10 @@ export const SITE = {
 
 export const NAV = [
   { href: "/", label: "Главная" },
-  { href: "/launcher", label: "Лаунчер" },
+  { href: "/rules", label: "Правила" },
   { href: "/map", label: "Карта" },
   { href: "/stats", label: "Статистика" },
   { href: "/gallery", label: "Галерея" },
+  { href: "/launcher", label: "Лаунчер" },
   { href: "/skins", label: "Скины" },
-  { href: "/rules", label: "Правила" },
 ];

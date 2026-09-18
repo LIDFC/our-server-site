@@ -41,12 +41,54 @@ function quickCheck(file: File, maxBytes: number): string | null {
   return null;
 }
 
+const DROP_HINT = "или перетащите картинку сюда";
+
+/** The native file input is hidden inside its label: this keeps the shown file name and the drop zone in step. */
+function initFilePicker(page: HTMLElement): void {
+  const drop = page.querySelector("[data-skin-drop]");
+  const input = page.querySelector("input[type=file]");
+  const name = field(page, "file");
+  if (!(drop instanceof HTMLElement) || !(input instanceof HTMLInputElement) || !name) {
+    return;
+  }
+
+  const showChoice = (): void => {
+    const file = input.files?.[0];
+    name.textContent = file ? `${file.name} · ${fileSize(file.size)}` : DROP_HINT;
+    name.dataset.chosen = file ? "true" : "false";
+  };
+  input.addEventListener("change", showChoice);
+  page.addEventListener("reset", () => setTimeout(showChoice));
+
+  for (const event of ["dragenter", "dragover"]) {
+    drop.addEventListener(event, (dragEvent) => {
+      dragEvent.preventDefault();
+      drop.dataset.dragging = "true";
+    });
+  }
+  for (const event of ["dragleave", "dragend"]) {
+    drop.addEventListener(event, () => {
+      drop.dataset.dragging = "false";
+    });
+  }
+  drop.addEventListener("drop", (dragEvent) => {
+    dragEvent.preventDefault();
+    drop.dataset.dragging = "false";
+    const dropped = (dragEvent as DragEvent).dataTransfer?.files;
+    if (dropped && dropped.length > 0) {
+      input.files = dropped;
+      showChoice();
+    }
+  });
+}
+
 export function initSkinsPage(): void {
   const page = document.querySelector("[data-skins]");
   if (!(page instanceof HTMLElement)) {
     return;
   }
 
+  initFilePicker(page);
   let maxBytes = 8 * 1024 * 1024;
 
   const render = (skin: PublicSkin | null): void => {

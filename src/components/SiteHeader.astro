@@ -242,7 +242,10 @@ const isCurrent = (href: string): boolean => (href === "/" ? path === "/" : path
     white-space: nowrap;
   }
 
-  /* the account block joined the row, so the header trims its spacing before it gives up the menu */
+  /*
+   * The row holds seven pages, the account and the download button. On narrower screens the spacing tightens first and
+   * then the download button goes: "Лаунчер" is already in the menu, so nothing becomes unreachable.
+   */
   @media (max-width: 75rem) {
     .site-header__inner {
       gap: 0.75rem;
@@ -254,6 +257,10 @@ const isCurrent = (href: string): boolean => (href === "/" ? path === "/" : path
 
     .site-nav a {
       padding-inline: 0.6rem;
+    }
+
+    .site-header__cta {
+      display: none;
     }
   }
 
@@ -307,6 +314,14 @@ const isCurrent = (href: string): boolean => (href === "/" ? path === "/" : path
   .mobile-nav[open] .mobile-nav__icon::before {
     top: 0;
     transform: rotate(-90deg);
+  }
+
+  /*
+   * Chrome lays the panel of a closed <details> out inside ::details-content, which contains it and lets the menu
+   * stretch the page by a few pixels. Hiding it outright keeps the closed menu out of the layout entirely.
+   */
+  .mobile-nav:not([open]) .mobile-nav__panel {
+    display: none;
   }
 
   .mobile-nav__panel {
