@@ -359,6 +359,8 @@ sudo ss -tlnp | grep -E ':(80|443|3000|8080|25565)\b'
 | Скин не загружается, в логе `EACCES` | нет прав на `SKIN_UPLOAD_DIR` или его нет в `ReadWritePaths` юнита (шаг 19) |
 | «Файл не является корректным Minecraft-скином» | картинка не 64×64 и не 64×32 или это не PNG/JPG — расширение роли не играет |
 | Ссылка на скин открывается, а в игре скин не меняется | команда `/sr createcustom` не выполнена или SkinsRestorer не видит домен: проверьте, что ссылка открывается без входа |
+| После `/skin clear` скин остаётся на сайте | в логе Minecraft нет строки про синхронизацию: не задан `OUR_SERVER_API_TOKEN` (или `website.api-token`), либо токен не совпадает с `MINECRAFT_API_TOKEN` сайта |
+| В логе Minecraft `status 401` | токены на сайте и в плагине разные; после правки `.env` нужен `systemctl restart our-server-site` |
 
 ## 18. Аккаунты
 
@@ -449,4 +451,55 @@ curl -s -o /dev/null -w '%{http_code}\n' "https://mc.vin-off.site/skins/../../da
 
 Затем на https://mc.vin-off.site/skins загрузите скин 64×64 и откройте показанную ссылку: браузер должен показать
 картинку с `Content-Type: image/png`. В игре останется выполнить показанную на странице команду
-`/sr createcustom os_<12 символов> "<ссылка>"` и применить скин: `/skin set os_<12 символов>`.
+`/sr createcustom <имя> "<ссылка>"` и применить скин: `/skin set <имя>`. Имя по умолчанию — ваш ник, поменять его можно
+на той же странице.
+
+## 20. Синхронизация скинов с Minecraft
+
+Когда игрок делает в игре `/skin clear`, скин должен исчезать и на сайте. Этим занимается плагин
+[our-server-plugin](https://github.com/LIDFC/our-server-plugin): он замечает команду, спрашивает SkinsRestorer, остался
+ли скин, и сообщает сайту. Сайт удаляет запись и файл. Прямого доступа к базе у Minecraft нет.
+
+**1. Общий токен.** Придумайте длинный случайный секрет и пропишите его на сайте:
+
+```bash
+openssl rand -hex 32
+```
+
+```bash
+printf '\nMINECRAFT_API_TOKEN=вставьте-сюда-токен\n' >> /opt/our-server-site/.env && systemctl restart our-server-site
+```
+
+Без токена эндпоинт отвечает `503 integration-disabled` — интеграция просто выключена.
+
+**2. Плагин.** Соберите jar (GitHub Actions в репозитории плагина → последняя сборка → Artifacts → `OurServerPlugin`)
+и положите его в `/home/ubuntu/minecraft/plugins/` рядом со SkinsRestorer 15.x. Токен лучше передать через окружение
+сервера Minecraft, а не файлом:
+
+```ini
+# в systemd-юните Minecraft
+Environment=OUR_SERVER_API_TOKEN=тот-же-токен
+```
+
+Если сервер запускается скриптом, можно прописать токен в `plugins/OurServerPlugin/config.yml` (`website.api-token`),
+там же задаётся `website.base-url: "https://mc.vin-off.site"`. После этого перезапустите сервер Minecraft.
+
+**3. Проверка.**
+
+```bash
+# без токена и из браузера эндпоинт закрыт
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://mc.vin-off.site/api/internal/minecraft/skin-cleared \
+  -H 'Content-Type: application/json' -d '{"minecraftUuid":"00000000-0000-0000-0000-000000000000"}'
+```
+
+Ожидаем `401`. Дальше в игре: применить скин с сайта, затем `/skin clear` — через пару секунд страница «Скины»
+показывает «У вас пока нет сохранённого скина», а ссылка на файл отвечает 404. В логе Minecraft видно
+`Player <uuid> cleared their skin; synchronising the website account.` и `Website skin removed for Minecraft UUID <uuid>.`
+
+Если сайт в этот момент недоступен, `/skin clear` всё равно работает: плагин повторит запрос несколько раз с растущей
+паузой и напишет одну строку WARNING, а затем ERROR, если так и не достучался.
+
+**Как аккаунт связывается с игроком.** Первый запрос приходит с UUID и ником; сайт сверяет пару с
+`usercache.json` самого сервера, находит аккаунт по нику и запоминает UUID в `users.minecraft_uuid`. Дальше всё идёт по
+UUID, и смена ника в профиле ничего не ломает. Если UUID неизвестен сайту, ответ — `{"success":true,"deleted":false,
+"reason":"account_not_found"}`: удалять нечего, ошибки нет.
