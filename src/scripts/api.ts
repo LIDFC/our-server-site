@@ -53,14 +53,40 @@ export interface MarketDelivery {
   createdAt: string;
 }
 
+/** Who is behind a UUID, for display only: the marketplace itself never deals in names. */
+export interface MarketPerson {
+  uuid: string;
+  name: string | null;
+  headUrl: string | null;
+}
+
+export type MarketPeople = Record<string, MarketPerson>;
+
+export interface MarketBoard {
+  listings: MarketListing[];
+  players: MarketPeople;
+}
+
 /** What the signed in player has on the marketplace. `linked: false` means the server has never seen this nickname. */
 export interface MarketMine {
   linked: boolean;
   minecraftUuid: string;
   minecraftUsername: string;
   listings: MarketListing[];
-  trades: MarketTrade[];
+  trades: (MarketTrade & { archived: boolean })[];
   deliveries: MarketDelivery[];
+  players: MarketPeople;
+}
+
+export interface MarketTradeDetail extends MarketTrade {
+  ownerItems: MarketItem[];
+  buyerItems: MarketItem[];
+}
+
+export interface MarketTradeAnswer {
+  trade: MarketTradeDetail;
+  players: MarketPeople;
+  you: string;
 }
 
 export type DownloadId =

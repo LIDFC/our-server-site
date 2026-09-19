@@ -46,9 +46,14 @@ import Base from "../layouts/Base.astro";
         <div class="lots" data-market-my-listings></div>
         <p class="market-none" data-market-no-listings hidden>Своих лотов нет.</p>
 
-        <h3 class="market-subhead">Мои сделки</h3>
+        <div class="market-head market-head--sub">
+          <h3 class="market-subhead">Мои сделки</h3>
+          <button class="button button--secondary button--small" type="button" data-market-archive-toggle aria-pressed="false" hidden>
+            Архив
+          </button>
+        </div>
         <div class="lots" data-market-my-trades></div>
-        <p class="market-none" data-market-no-trades hidden>Активных сделок нет.</p>
+        <p class="market-none" data-market-no-trades hidden>Здесь пусто.</p>
 
         <h3 class="market-subhead">Посылки</h3>
         <div class="lots" data-market-my-deliveries></div>
@@ -59,6 +64,11 @@ import Base from "../layouts/Base.astro";
         </p>
       </div>
     </section>
+
+    <dialog class="sheet" data-market-sheet aria-label="Сделка">
+      <button class="sheet__close" type="button" data-market-sheet-close aria-label="Закрыть">×</button>
+      <div class="sheet__body" data-market-sheet-body></div>
+    </dialog>
 
     <section class="section">
       <div class="notice">

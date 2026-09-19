@@ -4,12 +4,18 @@ import {
   getJson,
   postJson,
   whileVisible,
+  type MarketBoard,
   type MarketDelivery,
+  type MarketItem,
   type MarketListing,
   type MarketMine,
+  type MarketPeople,
   type MarketTrade,
+  type MarketTradeAnswer,
 } from "./api";
 import { messageFor } from "./forms";
+import { glyph } from "./glyphs";
+import { parseItem } from "./items";
 
 const REFRESH_MS = 20_000;
 
@@ -30,8 +36,10 @@ const TRADE_STATES: Record<MarketTrade["state"], string> = {
   EXPIRED: "истекла",
 };
 
-function element<T extends HTMLElement>(root: ParentNode, selector: string): T | null {
-  return root.querySelector<T>(selector);
+const FINISHED: MarketTrade["state"][] = ["COMPLETED", "REJECTED", "CANCELLED", "EXPIRED"];
+
+function finished(trade: MarketTrade): boolean {
+  return FINISHED.includes(trade.state);
 }
 
 function show(node: Element | null, visible: boolean): void {
@@ -40,73 +48,132 @@ function show(node: Element | null, visible: boolean): void {
   }
 }
 
-function line(parent: HTMLElement, label: string, items: { summary: string }[], fallback: string): void {
+/** A player's face, or their initial when they have not uploaded a skin here. */
+function face(people: MarketPeople, uuid: string): HTMLElement {
+  const person = people[uuid];
+  const name = person?.name ?? "неизвестный игрок";
+  if (person?.headUrl) {
+    const image = document.createElement("img");
+    image.className = "face";
+    image.src = person.headUrl;
+    image.alt = "";
+    image.width = 64;
+    image.height = 64;
+    image.loading = "lazy";
+    image.decoding = "async";
+    return image;
+  }
+  const blank = document.createElement("span");
+  blank.className = "face face--blank";
+  blank.setAttribute("aria-hidden", "true");
+  blank.textContent = name.charAt(0).toUpperCase();
+  return blank;
+}
+
+function who(people: MarketPeople, uuid: string): HTMLElement {
   const row = document.createElement("p");
-  row.className = "lot__line";
-  const title = document.createElement("span");
-  title.className = "lot__label";
-  title.textContent = label;
-  const value = document.createElement("span");
-  value.textContent = items.length > 0 ? items.map((item) => item.summary).join(", ") : fallback;
-  row.append(title, value);
-  parent.append(row);
+  row.className = "lot__who";
+  const name = document.createElement("span");
+  name.className = "lot__name";
+  name.textContent = people[uuid]?.name ?? "неизвестный игрок";
+  row.append(face(people, uuid), name);
+  return row;
 }
 
-function card(title: string, badge: string | null): { article: HTMLElement; body: HTMLElement } {
-  const article = document.createElement("article");
-  article.className = "lot";
+/** One stack: the glyph, how many, and what it is. */
+function stack(item: MarketItem): HTMLElement {
+  const parsed = parseItem(item.summary);
+  const row = document.createElement("li");
+  row.className = "stack";
 
-  const head = document.createElement("div");
-  head.className = "lot__head";
-  const heading = document.createElement("h3");
-  heading.className = "lot__title";
-  heading.textContent = title;
-  head.append(heading);
-  if (badge) {
-    const chip = document.createElement("span");
-    chip.className = "lot__badge";
-    chip.textContent = badge;
-    head.append(chip);
+  const count = document.createElement("span");
+  count.className = "stack__count";
+  count.textContent = String(parsed.count);
+
+  const label = document.createElement("span");
+  label.className = "stack__label";
+  label.textContent = parsed.label;
+  if (parsed.renamed) {
+    label.classList.add("stack__label--renamed");
+    label.title = parsed.id.replace(/_/g, " ");
   }
 
-  const body = document.createElement("div");
-  body.className = "lot__body";
-  article.append(head, body);
-  return { article, body };
+  row.append(glyph(parsed.id), count, label);
+  return row;
 }
 
-function listingCard(listing: MarketListing): HTMLElement {
-  const { article, body } = card(`Лот #${listing.id}`, TYPE_NAMES[listing.type] ?? listing.type);
-  line(body, "Отдают:", listing.offered, "ничего");
-  if (listing.type !== "GIVEAWAY" && listing.type !== "GIFT") {
-    line(body, "Хотят:", listing.wanted, "что угодно");
+function stacks(items: MarketItem[], fallback: string): HTMLElement {
+  if (items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "side__empty";
+    empty.textContent = fallback;
+    return empty;
   }
-  return article;
+  const list = document.createElement("ul");
+  list.className = "side__items";
+  list.append(...items.map(stack));
+  return list;
 }
 
-/** A button that runs one marketplace action and then redraws. Disabled while the request is in flight. */
-function actionButton(label: string, kind: "primary" | "secondary", run: () => Promise<string | null>, onDone: () => void): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = `button button--${kind} button--small`;
-  button.textContent = label;
-  button.addEventListener("click", () => {
-    button.disabled = true;
+/**
+ * The two halves of an exchange, facing each other. This is the shape of the whole idea, so it is the one place on
+ * the page allowed to be loud; everything around it stays quiet.
+ */
+function exchange(left: { title: string; items: MarketItem[]; fallback: string }, right: { title: string; items: MarketItem[]; fallback: string } | null): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = right ? "exchange" : "exchange exchange--one";
+
+  const side = (part: { title: string; items: MarketItem[]; fallback: string }): HTMLElement => {
+    const column = document.createElement("div");
+    column.className = "side";
+    const title = document.createElement("p");
+    title.className = "side__title";
+    title.textContent = part.title;
+    column.append(title, stacks(part.items, part.fallback));
+    return column;
+  };
+
+  wrap.append(side(left));
+  if (right) {
+    const mark = document.createElement("span");
+    mark.className = "exchange__mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = "⇄";
+    wrap.append(mark, side(right));
+  }
+  return wrap;
+}
+
+function badge(text: string): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = "lot__badge";
+  chip.textContent = text;
+  return chip;
+}
+
+function button(label: string, kind: "primary" | "secondary", run: () => Promise<string | null>, after: () => void): HTMLButtonElement {
+  const node = document.createElement("button");
+  node.type = "button";
+  node.className = `button button--${kind} button--small`;
+  node.textContent = label;
+  node.addEventListener("click", (event) => {
+    event.stopPropagation();
+    node.disabled = true;
     void run()
       .then((error) => {
         if (error) {
           const message = document.createElement("p");
           message.className = "lot__error";
           message.textContent = error;
-          button.parentElement?.append(message);
+          node.parentElement?.append(message);
         }
-        onDone();
+        after();
       })
       .finally(() => {
-        button.disabled = false;
+        node.disabled = false;
       });
   });
-  return button;
+  return node;
 }
 
 async function send(path: string, body: unknown): Promise<string | null> {
@@ -115,18 +182,25 @@ async function send(path: string, body: unknown): Promise<string | null> {
 }
 
 export function initMarketPage(): void {
-  const page = element<HTMLElement>(document, "[data-market]");
+  const page = document.querySelector<HTMLElement>("[data-market]");
   if (!page) {
     return;
   }
 
-  const list = element<HTMLElement>(page, "[data-market-list]");
-  const empty = element<HTMLElement>(page, "[data-market-empty]");
-  const offline = element<HTMLElement>(page, "[data-market-offline]");
-  const mineBlock = element<HTMLElement>(page, "[data-market-mine]");
-  const signIn = element<HTMLElement>(page, "[data-market-signin]");
-  const unlinked = element<HTMLElement>(page, "[data-market-unlinked]");
+  const find = <T extends HTMLElement>(selector: string): T | null => page.querySelector<T>(selector);
+  const list = find("[data-market-list]");
+  const empty = find("[data-market-empty]");
+  const offline = find("[data-market-offline]");
+  const mineBlock = find("[data-market-mine]");
+  const signIn = find("[data-market-signin]");
+  const unlinked = find("[data-market-unlinked]");
+  const sheet = find<HTMLDialogElement>("[data-market-sheet]");
+  const sheetBody = find("[data-market-sheet-body]");
+  const archiveToggle = find<HTMLButtonElement>("[data-market-archive-toggle]");
+
   let filter = "";
+  let showArchived = false;
+  let openTrade: number | null = null;
 
   const drawBoard = async (): Promise<void> => {
     if (!list) {
@@ -134,10 +208,10 @@ export function initMarketPage(): void {
     }
     try {
       const query = filter ? `?type=${filter}&limit=50` : "?limit=50";
-      const { listings } = await getJson<{ listings: MarketListing[] }>(`/api/market/listings${query}`);
-      list.replaceChildren(...listings.map(listingCard));
+      const board = await getJson<MarketBoard>(`/api/market/listings${query}`);
+      list.replaceChildren(...board.listings.map((listing) => listingTile(listing, board.players)));
       list.setAttribute("aria-busy", "false");
-      show(empty, listings.length === 0);
+      show(empty, board.listings.length === 0);
       show(offline, false);
     } catch {
       list.replaceChildren();
@@ -146,6 +220,22 @@ export function initMarketPage(): void {
       show(offline, true);
     }
   };
+
+  function listingTile(listing: MarketListing, players: MarketPeople): HTMLElement {
+    const article = document.createElement("article");
+    article.className = "lot";
+
+    const head = document.createElement("header");
+    head.className = "lot__head";
+    head.append(who(players, listing.ownerUuid), badge(TYPE_NAMES[listing.type] ?? listing.type));
+    article.append(head);
+
+    const wantsSide = listing.type === "GIVEAWAY" || listing.type === "GIFT"
+      ? null
+      : { title: "хочет взамен", items: listing.wanted, fallback: "что предложите" };
+    article.append(exchange({ title: "отдаёт", items: listing.offered, fallback: "ничего" }, wantsSide));
+    return article;
+  }
 
   const drawMine = async (): Promise<void> => {
     let mine: MarketMine;
@@ -159,7 +249,7 @@ export function initMarketPage(): void {
     if (!mine.linked) {
       show(unlinked, true);
       show(mineBlock, false);
-      const nick = element<HTMLElement>(page, "[data-market-nick]");
+      const nick = find("[data-market-nick]");
       if (nick) {
         nick.textContent = mine.minecraftUsername;
       }
@@ -173,47 +263,213 @@ export function initMarketPage(): void {
       void drawBoard();
     };
 
-    const listings = element<HTMLElement>(page, "[data-market-my-listings]");
-    if (listings) {
-      listings.replaceChildren(
+    const myListings = find("[data-market-my-listings]");
+    if (myListings) {
+      myListings.replaceChildren(
         ...mine.listings.map((listing) => {
-          const node = listingCard(listing);
-          const controls = document.createElement("div");
-          controls.className = "lot__actions";
-          controls.append(
-            actionButton("Снять лот", "secondary", () => send("/api/market/listings/cancel", { listingId: listing.id }), redraw),
-          );
-          node.append(controls);
-          return node;
+          const tile = listingTile(listing, mine.players);
+          const actions = document.createElement("footer");
+          actions.className = "lot__actions";
+          actions.append(button("Снять лот", "secondary", () => send("/api/market/listings/cancel", { listingId: listing.id }), redraw));
+          tile.append(actions);
+          return tile;
         }),
       );
-      show(element(page, "[data-market-no-listings]"), mine.listings.length === 0);
+      show(find("[data-market-no-listings]"), mine.listings.length === 0);
     }
 
-    const trades = element<HTMLElement>(page, "[data-market-my-trades]");
-    if (trades) {
-      trades.replaceChildren(...mine.trades.map((trade) => tradeCard(trade, mine.minecraftUuid, redraw)));
-      show(element(page, "[data-market-no-trades]"), mine.trades.length === 0);
+    const inArchive = mine.trades.filter((trade) => trade.archived);
+    const visible = mine.trades.filter((trade) => trade.archived === showArchived);
+    const myTrades = find("[data-market-my-trades]");
+    if (myTrades) {
+      myTrades.replaceChildren(...visible.map((trade) => tradeTile(trade, mine, redraw)));
+      show(find("[data-market-no-trades]"), visible.length === 0);
+    }
+    if (archiveToggle) {
+      archiveToggle.hidden = inArchive.length === 0 && !showArchived;
+      archiveToggle.textContent = showArchived ? "Вернуться к активным" : `Архив (${inArchive.length})`;
+      archiveToggle.setAttribute("aria-pressed", String(showArchived));
     }
 
-    const deliveries = element<HTMLElement>(page, "[data-market-my-deliveries]");
-    if (deliveries) {
-      deliveries.replaceChildren(...mine.deliveries.map(deliveryCard));
-      show(element(page, "[data-market-no-deliveries]"), mine.deliveries.length === 0);
-      show(element(page, "[data-market-deliveries-note]"), mine.deliveries.length > 0);
+    const myDeliveries = find("[data-market-my-deliveries]");
+    if (myDeliveries) {
+      myDeliveries.replaceChildren(...mine.deliveries.map(deliveryTile));
+      show(find("[data-market-no-deliveries]"), mine.deliveries.length === 0);
+      show(find("[data-market-deliveries-note]"), mine.deliveries.length > 0);
+    }
+
+    if (openTrade !== null) {
+      void fillSheet(openTrade, redraw);
     }
   };
 
-  for (const button of page.querySelectorAll<HTMLButtonElement>("[data-market-filter]")) {
-    button.addEventListener("click", () => {
-      filter = button.dataset["marketFilter"] ?? "";
+  function tradeTile(trade: MarketTrade & { archived: boolean }, mine: MarketMine, redraw: () => void): HTMLElement {
+    const owner = trade.ownerUuid === mine.minecraftUuid;
+    const other = owner ? trade.buyerUuid : trade.ownerUuid;
+
+    const article = document.createElement("article");
+    article.className = "lot lot--trade";
+    if (finished(trade)) {
+      article.classList.add("lot--done");
+    }
+
+    const head = document.createElement("header");
+    head.className = "lot__head";
+    head.append(who(mine.players, other), badge(TRADE_STATES[trade.state] ?? trade.state));
+    article.append(head);
+
+    const what = document.createElement("p");
+    what.className = "lot__line";
+    what.textContent = `${owner ? "Вам предложили обмен" : "Вы предложили обмен"} по лоту #${trade.listingId}`;
+    article.append(what);
+
+    // the whole tile opens the trade; a real button underneath everything keeps it reachable from the keyboard
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "lot__open";
+    open.textContent = `Сделка #${trade.id}: подробности`;
+    open.addEventListener("click", () => openSheet(trade.id, redraw));
+    article.append(open);
+
+    const actions = document.createElement("footer");
+    actions.className = "lot__actions";
+    if (finished(trade)) {
+      actions.append(
+        button(
+          trade.archived ? "Вернуть из архива" : "В архив",
+          "secondary",
+          () => send("/api/market/trades/archive", { tradeId: trade.id, restore: trade.archived }),
+          redraw,
+        ),
+      );
+    } else {
+      actions.append(...answers(trade, owner, redraw));
+    }
+    if (actions.childElementCount > 0) {
+      article.append(actions);
+    }
+    return article;
+  }
+
+  /** The answers this player can give to this trade right now. The same set is used on the tile and in the sheet. */
+  function answers(trade: MarketTrade, owner: boolean, redraw: () => void): HTMLButtonElement[] {
+    const answer = (what: "accept" | "decline" | "confirm"): Promise<string | null> =>
+      send("/api/market/trades/action", { tradeId: trade.id, action: what });
+
+    if (trade.state === "PENDING") {
+      return owner
+        ? [button("Принять", "primary", () => answer("accept"), redraw), button("Отклонить", "secondary", () => answer("decline"), redraw)]
+        : [button("Отозвать предложение", "secondary", () => answer("decline"), redraw)];
+    }
+    if (trade.state === "ACCEPTED" || trade.state === "CONFIRMED") {
+      const mine = owner ? "OWNER" : "BUYER";
+      const waiting = trade.confirmations.includes(mine);
+      return waiting
+        ? [button("Отменить", "secondary", () => answer("decline"), redraw)]
+        : [button("Подтвердить обмен", "primary", () => answer("confirm"), redraw), button("Отменить", "secondary", () => answer("decline"), redraw)];
+    }
+    return [];
+  }
+
+  function deliveryTile(delivery: MarketDelivery): HTMLElement {
+    const article = document.createElement("article");
+    article.className = "lot lot--parcel";
+    const head = document.createElement("header");
+    head.className = "lot__head";
+    head.append(badge("ждёт в игре"));
+    article.append(head, stacks([{ summary: delivery.summary, amount: delivery.amount }], "—"));
+    return article;
+  }
+
+  // the sheet -----------------------------------------------------------------------------------------------------
+
+  function openSheet(tradeId: number, redraw: () => void): void {
+    if (!sheet) {
+      return;
+    }
+    openTrade = tradeId;
+    void fillSheet(tradeId, redraw);
+    if (!sheet.open) {
+      sheet.showModal();
+    }
+  }
+
+  async function fillSheet(tradeId: number, redraw: () => void): Promise<void> {
+    if (!sheet || !sheetBody) {
+      return;
+    }
+    let answer: MarketTradeAnswer;
+    try {
+      answer = await getJson<MarketTradeAnswer>(`/api/market/trade?id=${tradeId}`);
+    } catch {
+      sheetBody.replaceChildren(note("Подробности этой сделки сейчас недоступны. В игре они видны в окне «Мои сделки»."));
+      return;
+    }
+    const trade = answer.trade;
+    const owner = trade.ownerUuid === answer.you;
+    const other = owner ? trade.buyerUuid : trade.ownerUuid;
+
+    const title = document.createElement("h2");
+    title.className = "sheet__title";
+    title.textContent = `Сделка #${trade.id}`;
+
+    const line = document.createElement("p");
+    line.className = "sheet__line";
+    line.textContent = `По лоту #${trade.listingId} · ${TRADE_STATES[trade.state] ?? trade.state}`;
+
+    const parties = exchange(
+      { title: owner ? "вы отдаёте" : "вы получаете", items: trade.ownerItems, fallback: "ничего" },
+      { title: owner ? "вы получаете" : "вы отдаёте", items: trade.buyerItems, fallback: "ничего" },
+    );
+
+    const actions = document.createElement("div");
+    actions.className = "sheet__actions";
+    const afterAction = (): void => {
+      redraw();
+      void fillSheet(tradeId, redraw);
+    };
+    if (finished(trade)) {
+      actions.append(note("Сделка закрыта. Её можно убрать из списка кнопкой «В архив»."));
+    } else {
+      actions.append(...answers(trade, owner, afterAction));
+    }
+
+    sheetBody.replaceChildren(title, who(answer.players, other), line, parties, actions);
+  }
+
+  function note(text: string): HTMLElement {
+    const paragraph = document.createElement("p");
+    paragraph.className = "sheet__note";
+    paragraph.textContent = text;
+    return paragraph;
+  }
+
+  sheet?.addEventListener("close", () => {
+    openTrade = null;
+  });
+  // clicking the backdrop closes it, the way a sheet is expected to behave
+  sheet?.addEventListener("click", (event) => {
+    if (event.target === sheet) {
+      sheet.close();
+    }
+  });
+  find("[data-market-sheet-close]")?.addEventListener("click", () => sheet?.close());
+
+  for (const node of page.querySelectorAll<HTMLButtonElement>("[data-market-filter]")) {
+    node.addEventListener("click", () => {
+      filter = node.dataset["marketFilter"] ?? "";
       for (const other of page.querySelectorAll<HTMLButtonElement>("[data-market-filter]")) {
-        other.setAttribute("aria-pressed", String(other === button));
+        other.setAttribute("aria-pressed", String(other === node));
       }
       list?.setAttribute("aria-busy", "true");
       void drawBoard();
     });
   }
+
+  archiveToggle?.addEventListener("click", () => {
+    showArchived = !showArchived;
+    void drawMine();
+  });
 
   void getConfig()
     .then((config) => {
@@ -232,62 +488,4 @@ export function initMarketPage(): void {
       });
     })
     .catch(() => show(offline, true));
-}
-
-function tradeCard(trade: MarketTrade, me: string, redraw: () => void): HTMLElement {
-  const owner = trade.ownerUuid === me;
-  const { article, body } = card(`Сделка #${trade.id} по лоту #${trade.listingId}`, TRADE_STATES[trade.state] ?? trade.state);
-
-  const who = document.createElement("p");
-  who.className = "lot__line";
-  who.textContent = owner ? "Вам предложили обмен" : "Вы предложили обмен";
-  body.append(who);
-
-  const hint = document.createElement("p");
-  hint.className = "lot__line lot__hint";
-  hint.textContent = "Что именно на обеих сторонах — видно в игре, в окне «Мои сделки».";
-  body.append(hint);
-
-  const controls = document.createElement("div");
-  controls.className = "lot__actions";
-  const answer = (what: "accept" | "decline" | "confirm"): Promise<string | null> =>
-    send("/api/market/trades/action", { tradeId: trade.id, action: what });
-
-  if (trade.state === "PENDING" && owner) {
-    controls.append(
-      actionButton("Принять", "primary", () => answer("accept"), redraw),
-      actionButton("Отклонить", "secondary", () => answer("decline"), redraw),
-    );
-  } else if (trade.state === "ACCEPTED" || trade.state === "CONFIRMED") {
-    const mine = owner ? "OWNER" : "BUYER";
-    if (trade.confirmations.includes(mine)) {
-      const waiting = document.createElement("p");
-      waiting.className = "lot__line lot__hint";
-      waiting.textContent = "Вы подтвердили, ждём вторую сторону.";
-      body.append(waiting);
-    } else {
-      controls.append(actionButton("Подтвердить обмен", "primary", () => answer("confirm"), redraw));
-    }
-    controls.append(actionButton("Отменить", "secondary", () => answer("decline"), redraw));
-  } else if (trade.state === "PENDING") {
-    const waiting = document.createElement("p");
-    waiting.className = "lot__line lot__hint";
-    waiting.textContent = "Ждём ответа владельца лота.";
-    body.append(waiting);
-    controls.append(actionButton("Отозвать предложение", "secondary", () => answer("decline"), redraw));
-  }
-
-  if (controls.childElementCount > 0) {
-    article.append(controls);
-  }
-  return article;
-}
-
-function deliveryCard(delivery: MarketDelivery): HTMLElement {
-  const { article, body } = card(delivery.summary, "ждёт в игре");
-  const why = document.createElement("p");
-  why.className = "lot__line lot__hint";
-  why.textContent = `Причина: ${delivery.reason}`;
-  body.append(why);
-  return article;
 }

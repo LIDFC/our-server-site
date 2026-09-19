@@ -56,6 +56,18 @@ const MIGRATIONS: string[] = [
    CREATE UNIQUE INDEX skins_name ON skins(skin_name_lower);
    ALTER TABLE users ADD COLUMN minecraft_uuid TEXT;
    CREATE UNIQUE INDEX users_minecraft_uuid ON users(minecraft_uuid);`,
+
+  /*
+   * Finished trades a player has put away. The marketplace's own record cannot be deleted — its ledger is append only
+   * on purpose — so this is only the site's view of it: whose list a finished trade no longer belongs in. Nothing
+   * here touches the game, and unarchiving is just deleting the row.
+   */
+  `CREATE TABLE market_archived_trades (
+     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     trade_id INTEGER NOT NULL,
+     archived_at TEXT NOT NULL,
+     PRIMARY KEY (user_id, trade_id)
+   );`,
 ];
 
 export function schemaVersion(db: Database): number {

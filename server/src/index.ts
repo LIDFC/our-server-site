@@ -24,7 +24,8 @@ import { createFileGalleryStore } from "./services/gallery.ts";
 import { createHistoryStore, startHistorySampler } from "./services/history.ts";
 import { createLauncherService } from "./services/launcher.ts";
 import { createMarketService, type TradeAction } from "./services/market.ts";
-import { createMinecraftDirectory } from "./services/minecraft.ts";
+import { createMarketPeople } from "./services/marketPeople.ts";
+import { createMinecraftDirectory, normalizeUuid } from "./services/minecraft.ts";
 import { createSkinService } from "./services/skins.ts";
 import { createSkinSync } from "./services/skinSync.ts";
 import { buildLeaderboard, createStatsService } from "./services/stats.ts";
@@ -39,6 +40,7 @@ const GUARDED_AUTH_PATHS = new Set(["/api/auth/register", "/api/auth/login", "/a
 const SESSION_SWEEP_MS = 3_600_000;
 const SKIN_UPLOAD_PATH = "/api/skins";
 const SKIN_PUBLIC_PREFIX = "/skins/";
+const MARKET_HEAD_PREFIX = "/api/market/head/";
 const MARKET_TYPES = new Set(["GIVEAWAY", "TRADE", "WANTED", "GIFT"]);
 const TRADE_ACTIONS = new Set<TradeAction>(["accept", "decline", "confirm"]);
 
@@ -66,6 +68,28 @@ export function createApp(config: Config) {
   const minecraftDirectory = createMinecraftDirectory(config);
   const skinSync = createSkinSync(accounts, skins, minecraftDirectory);
   const market = createMarketService(config);
+  const people = createMarketPeople(accounts, skins, minecraftDirectory);
+
+  /**
+   * Finished trades a player has put away. The marketplace's own record is append only and stays untouched: this is
+   * only about whose list a trade shows up in on the site.
+   */
+  const archived = {
+    of: (userId: number): Set<number> => {
+      const rows = db.prepare("SELECT trade_id FROM market_archived_trades WHERE user_id = ?").all(userId);
+      return new Set(rows.map((row) => Number(row["trade_id"])));
+    },
+    add: (userId: number, tradeId: number): void => {
+      db.prepare("INSERT OR IGNORE INTO market_archived_trades (user_id, trade_id, archived_at) VALUES (?, ?, ?)").run(
+        userId,
+        tradeId,
+        new Date().toISOString(),
+      );
+    },
+    remove: (userId: number, tradeId: number): void => {
+      db.prepare("DELETE FROM market_archived_trades WHERE user_id = ? AND trade_id = ?").run(userId, tradeId);
+    },
+  };
   const limiter = createRateLimiter(config.rateLimit);
   const authLimiter = createRateLimiter(config.auth.rateLimit);
   const uploadLimiter = createRateLimiter(config.skins.rateLimit);
@@ -208,8 +232,10 @@ export function createApp(config: Config) {
       if (!result.ok) {
         return { status: result.status, body: { error: result.error, message: result.message } };
       }
+      // the marketplace speaks in UUIDs; the site adds the names and faces it already knows, for display only
+      const players = await people.describe(result.value.map((listing) => listing.ownerUuid));
       // the answer is already cached inside the service; the browser gets a short cache too
-      return { body: { listings: result.value, limit, offset }, cacheSeconds: config.market.listingsCacheSeconds };
+      return { body: { listings: result.value, players, limit, offset }, cacheSeconds: config.market.listingsCacheSeconds };
     },
   };
 
@@ -238,16 +264,51 @@ export function createApp(config: Config) {
       if (failed && !failed.ok) {
         return { status: failed.status, body: { error: failed.error, message: failed.message } };
       }
+      const myTrades = trades.ok ? trades.value : [];
+      const put = archived.of(user.id);
+      const players = await people.describe([
+        uuid,
+        ...myTrades.map((trade) => trade.ownerUuid),
+        ...myTrades.map((trade) => trade.buyerUuid),
+      ]);
       return {
         body: {
           linked: true,
           minecraftUuid: uuid,
           minecraftUsername: user.minecraftUsername,
           listings: listings.ok ? listings.value : [],
-          trades: trades.ok ? trades.value : [],
+          trades: myTrades.map((trade) => ({ ...trade, archived: put.has(trade.id) })),
           deliveries: deliveries.ok ? deliveries.value : [],
+          players,
         },
       };
+    },
+
+    /**
+     * One trade with both halves. The plugin does not ask who is looking — it trusts this backend — so the check that
+     * you are actually part of this trade happens here, before anything is sent back.
+     */
+    "/api/market/trade": async (url, user) => {
+      if (!market.enabled) {
+        return { status: 503, body: { error: "market-disabled", message: "The marketplace is not configured" } };
+      }
+      const id = wholeNumber(url.searchParams.get("id"), 0, 1, 999_999);
+      if (id === null || id === 0) {
+        return { status: 400, body: { error: "invalid-body", message: "id must be a positive whole number" } };
+      }
+      const uuid = await minecraftUuidFor(user);
+      if (!uuid) {
+        return { status: 409, body: { error: "minecraft-not-linked", message: "Log in to the Minecraft server once" } };
+      }
+      const detail = await market.tradeDetail(id);
+      if (!detail.ok) {
+        return { status: detail.status, body: { error: detail.error, message: detail.message } };
+      }
+      if (detail.value.ownerUuid !== uuid && detail.value.buyerUuid !== uuid) {
+        return { status: 403, body: { error: "not-participant", message: "This trade is not yours" } };
+      }
+      const players = await people.describe([detail.value.ownerUuid, detail.value.buyerUuid]);
+      return { body: { trade: detail.value, players, you: uuid } };
     },
   };
 
@@ -377,6 +438,30 @@ export function createApp(config: Config) {
         return;
       }
       await marketAction(req, res, body["tradeId"], "tradeId", (uuid, id) => market.trade(uuid, id, action as TradeAction));
+    },
+
+    /**
+     * Puts a finished trade away, or takes it back out. This never reaches the marketplace: its ledger is append only
+     * by design, so "remove it" can only ever mean "not in my list any more", and that belongs to the site.
+     */
+    "/api/market/trades/archive": async (req, res, body) => {
+      const user = accounts.current(sessionToken(req));
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      const id = body["tradeId"];
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+        sendError(res, 400, "invalid-body", "tradeId must be a positive whole number");
+        return;
+      }
+      const restore = body["restore"] === true;
+      if (restore) {
+        archived.remove(user.id, id);
+      } else {
+        archived.add(user.id, id);
+      }
+      sendJson(res, 200, { tradeId: id, archived: !restore });
     },
 
     "/api/auth/password": async (req, res, body) => {
@@ -511,6 +596,24 @@ export function createApp(config: Config) {
         minecraftUsername: user.minecraftUsername,
         limits: { maxBytes: config.skins.maxUploadBytes, sizes: ["64x64", "64x32"], types: ["image/png", "image/jpeg"] },
       });
+      return;
+    }
+
+    if (url.pathname.startsWith(MARKET_HEAD_PREFIX) && url.pathname.endsWith(".png")) {
+      // a player's face, rendered from the skin they uploaded here; public, like the skin itself
+      const raw = url.pathname.slice(MARKET_HEAD_PREFIX.length, -".png".length);
+      const uuid = normalizeUuid(raw);
+      const png = uuid ? await people.head(uuid) : null;
+      if (!png) {
+        sendError(res, 404, "not-found", "No face for this player");
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Length", png.length);
+      // short: a player may upload a new skin at any moment, and the file is tiny
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.end(req.method === "HEAD" ? undefined : png);
       return;
     }
 

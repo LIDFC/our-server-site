@@ -58,10 +58,17 @@ export type Result<T> = { ok: true; value: T } | Failure;
 
 export type TradeAction = "accept" | "decline" | "confirm";
 
+/** One trade with both halves, as `GET /trades/{id}` of the plugin answers it. */
+export interface MarketTradeDetail extends MarketTrade {
+  ownerItems: MarketItem[];
+  buyerItems: MarketItem[];
+}
+
 export interface MarketService {
   /** false while MARKET_API_URL and MARKET_API_TOKEN are not set: the section then says so instead of failing. */
   readonly enabled: boolean;
   listings(type: string | null, limit: number, offset: number): Promise<Result<MarketListing[]>>;
+  tradeDetail(tradeId: number): Promise<Result<MarketTradeDetail>>;
   listingsOf(uuid: string): Promise<Result<MarketListing[]>>;
   tradesOf(uuid: string): Promise<Result<MarketTrade[]>>;
   deliveriesOf(uuid: string): Promise<Result<MarketDelivery[]>>;
@@ -204,6 +211,27 @@ export function createMarketService(config: Config): MarketService {
       return cached.value;
     },
 
+    /**
+     * One trade with what each side put up. An older plugin has no such endpoint and answers with a refusal, which
+     * the page treats as "details are only in the game" rather than as a failure.
+     */
+    async tradeDetail(tradeId) {
+      const result = await call(`/trades/${tradeId}`, { method: "GET" });
+      if (!result.ok) {
+        return result;
+      }
+      const value = result.value as unknown as MarketTradeDetail;
+      return {
+        ok: true as const,
+        value: {
+          ...value,
+          ownerItems: Array.isArray(value.ownerItems) ? value.ownerItems : [],
+          buyerItems: Array.isArray(value.buyerItems) ? value.buyerItems : [],
+          confirmations: Array.isArray(value.confirmations) ? value.confirmations : [],
+        },
+      };
+    },
+
     // a player's own view is never cached: they have just acted on it and expect to see the result
     async listingsOf(uuid) {
       return listOf<MarketListing>(await call(`/players/${encodeURIComponent(uuid)}/listings`, { method: "GET" }), "listings");
@@ -214,7 +242,21 @@ export function createMarketService(config: Config): MarketService {
     },
 
     async deliveriesOf(uuid) {
-      return listOf<MarketDelivery>(await call(`/players/${encodeURIComponent(uuid)}/deliveries`, { method: "GET" }), "deliveries");
+      // the plugin calls the text of a parcel "item"; everything else on the site calls it a summary
+      const raw = listOf<Record<string, unknown>>(await call(`/players/${encodeURIComponent(uuid)}/deliveries`, { method: "GET" }), "deliveries");
+      if (!raw.ok) {
+        return raw;
+      }
+      return {
+        ok: true as const,
+        value: raw.value.map((row) => ({
+          id: Number(row["id"] ?? 0),
+          summary: String(row["item"] ?? row["summary"] ?? ""),
+          amount: Number(row["amount"] ?? 0),
+          reason: String(row["reason"] ?? ""),
+          createdAt: String(row["createdAt"] ?? ""),
+        })) satisfies MarketDelivery[],
+      };
     },
 
     async cancelListing(uuid, listingId) {

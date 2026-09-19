@@ -7,6 +7,7 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 
 import { loadConfig } from "../src/config.ts";
+import { decodePng, encodePng } from "../src/images/png.ts";
 import { createApp } from "../src/index.ts";
 
 const INVITE = "our-server-2026";
@@ -82,7 +83,20 @@ function fakePlugin(): { server: Server; calls: Call[]; fail: (code: string | nu
       } else if (url.includes("/trades") && url.includes("/players/")) {
         send(200, { trades: [{ id: 4, listingId: 12, ownerUuid: LEV_UUID, buyerUuid: MASHA_UUID, state: "PENDING", confirmations: [], createdAt: "x" }] });
       } else if (url.includes("/deliveries")) {
-        send(200, { deliveries: [{ id: 7, summary: "16x diamond", amount: 16, reason: "TRADE", createdAt: "x" }] });
+        // the plugin calls this field "item", not "summary"
+        send(200, { deliveries: [{ id: 7, item: "16x diamond", amount: 16, reason: "TRADE", createdAt: "x" }] });
+      } else if (req.method === "GET" && /^\/trades\/\d+$/.test(url)) {
+        send(200, {
+          id: 4,
+          listingId: 12,
+          ownerUuid: LEV_UUID,
+          buyerUuid: MASHA_UUID,
+          state: "PENDING",
+          confirmations: [],
+          createdAt: "x",
+          ownerItems: [{ summary: "16x diamond", amount: 16 }],
+          buyerItems: [{ summary: "32x gold ingot", amount: 32 }],
+        });
       } else if (url.endsWith("/cancel")) {
         send(200, { ok: true, listingId: 12 });
       } else if (url.includes("/trades/")) {
@@ -257,6 +271,79 @@ describe("marketplace section", () => {
       assert.equal(response.status, 200);
       assert.equal(plugin.calls.find((entry) => entry.method === "POST")?.path, `/trades/4/${action}`);
     }
+  });
+
+  it("reads a parcel out of the field the plugin actually sends", async () => {
+    const body = (await (await get("/api/market/mine", lev)).json()) as { deliveries: { summary: string; amount: number }[] };
+    assert.equal(body.deliveries[0]?.summary, "16x diamond");
+    assert.equal(body.deliveries[0]?.amount, 16);
+  });
+
+  it("serves a player's face once they have a skin here", async () => {
+    // a 64x64 skin with one known pixel where a face always starts
+    const pixels = Buffer.alloc(64 * 64 * 4);
+    const at = (8 * 64 + 8) * 4;
+    pixels[at] = 200;
+    pixels[at + 1] = 90;
+    pixels[at + 2] = 40;
+    pixels[at + 3] = 255;
+    const upload = await fetch(`${baseUrl}/api/skins`, {
+      method: "POST",
+      headers: { "Content-Type": "image/png", Cookie: lev },
+      body: new Uint8Array(encodePng({ width: 64, height: 64, data: pixels })),
+    });
+    assert.equal(upload.status, 201);
+
+    const board = (await (await get("/api/market/listings")).json()) as { players: Record<string, { headUrl: string | null }> };
+    const headUrl = board.players[LEV_UUID]?.headUrl;
+    assert.equal(headUrl, `/api/market/head/${LEV_UUID}.png`);
+
+    const face = await get(headUrl!);
+    assert.equal(face.status, 200, "the face must actually be served, not fall through to the API 404");
+    assert.equal(face.headers.get("content-type"), "image/png");
+    const rendered = decodePng(Buffer.from(await face.arrayBuffer()));
+    assert.equal(rendered.width, 64);
+    assert.deepEqual([rendered.data[0], rendered.data[1], rendered.data[2]], [200, 90, 40]);
+
+    assert.equal((await get("/api/market/head/not-a-uuid.png")).status, 404);
+    assert.equal((await get(`/api/market/head/${MASHA_UUID}.png`)).status, 404, "no skin, no face");
+  });
+
+  it("puts a name to every UUID it shows", async () => {
+    const board = (await (await get("/api/market/listings")).json()) as { players: Record<string, { name: string | null; headUrl: string | null }> };
+    assert.equal(board.players[LEV_UUID]?.name, "LevPlays", "the name comes from the server's own usercache.json");
+
+    const mine = (await (await get("/api/market/mine", lev)).json()) as { players: Record<string, { name: string | null }> };
+    assert.equal(mine.players[LEV_UUID]?.name, "LevPlays", "both sides of a trade are named");
+    assert.ok(MASHA_UUID in mine.players);
+  });
+
+  it("shows both halves of a trade to the people in it, and to nobody else", async () => {
+    const answer = await get("/api/market/trade?id=4", lev);
+    assert.equal(answer.status, 200);
+    const body = (await answer.json()) as { trade: { ownerItems: { summary: string }[]; buyerItems: { summary: string }[] }; you: string };
+    assert.equal(body.you, LEV_UUID);
+    assert.equal(body.trade.ownerItems[0]?.summary, "16x diamond");
+    assert.equal(body.trade.buyerItems[0]?.summary, "32x gold ingot");
+
+    assert.equal((await get("/api/market/trade?id=4")).status, 401, "not signed in");
+    assert.equal((await get("/api/market/trade?id=abc", lev)).status, 400);
+  });
+
+  it("archives a trade for one player without touching the marketplace", async () => {
+    plugin.calls.length = 0;
+    assert.equal((await post("/api/market/trades/archive", { tradeId: 4 }, lev)).status, 200);
+    assert.equal(plugin.calls.length, 0, "archiving never reaches the game server");
+
+    let mine = (await (await get("/api/market/mine", lev)).json()) as { trades: { id: number; archived: boolean }[] };
+    assert.equal(mine.trades.find((trade) => trade.id === 4)?.archived, true);
+
+    assert.equal((await post("/api/market/trades/archive", { tradeId: 4, restore: true }, lev)).status, 200);
+    mine = (await (await get("/api/market/mine", lev)).json()) as { trades: { id: number; archived: boolean }[] };
+    assert.equal(mine.trades.find((trade) => trade.id === 4)?.archived, false);
+
+    assert.equal((await post("/api/market/trades/archive", { tradeId: 0 }, lev)).status, 400);
+    assert.equal((await post("/api/market/trades/archive", { tradeId: 4 })).status, 401);
   });
 
   it("turns a refusal from the plugin into the site's own error code", async () => {
