@@ -1,0 +1,74 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Рынок" description="Что игроки сейчас отдают и на что меняются: доска рынка сервера, ваши лоты, сделки и посылки.">
+  <div class="container" data-market>
+    <header class="page-head">
+      <h1>Рынок</h1>
+      <p>Игроки меняются настоящими вещами. Пока сделка идёт, предметы лежат у рынка, а не у второй стороны — потерять их нельзя.</p>
+      <p class="page-state page-state--error" data-market-offline hidden>Рынок сейчас не отвечает. Загляните позже.</p>
+    </header>
+
+    <section class="section" aria-labelledby="market-board-heading">
+      <div class="market-head">
+        <h2 id="market-board-heading">Что сейчас на рынке</h2>
+        <div class="market-filters" role="group" aria-label="Тип лота">
+          <button class="button button--secondary button--small" type="button" data-market-filter="" aria-pressed="true">Все</button>
+          <button class="button button--secondary button--small" type="button" data-market-filter="GIVEAWAY" aria-pressed="false">Раздают</button>
+          <button class="button button--secondary button--small" type="button" data-market-filter="TRADE" aria-pressed="false">Меняют</button>
+          <button class="button button--secondary button--small" type="button" data-market-filter="WANTED" aria-pressed="false">Ищут</button>
+        </div>
+      </div>
+
+      <div class="lots" data-market-list aria-busy="true" aria-live="polite"></div>
+      <div class="notice" data-market-empty hidden>
+        <p><strong>Здесь пока пусто.</strong></p>
+        <p>Лот выкладывают в игре: наберите <span class="code-chip">/market</span> и выберите, что отдаёте.</p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="market-mine-heading">
+      <h2 id="market-mine-heading">Мои лоты и сделки</h2>
+
+      <div class="notice" data-market-signin hidden>
+        <p><strong>Войдите в аккаунт</strong>, чтобы видеть свои лоты, сделки и посылки.</p>
+        <p><a class="button button--primary button--small" href="/login?next=/market">Войти</a></p>
+      </div>
+
+      <div class="notice" data-market-unlinked hidden>
+        <p><strong>Аккаунт ещё не связан с игроком.</strong></p>
+        <p>Зайдите один раз на сервер под ником <span class="code-chip" data-market-nick>—</span>, и рынок вас узнает.</p>
+      </div>
+
+      <div data-market-mine hidden>
+        <h3 class="market-subhead">Мои лоты</h3>
+        <div class="lots" data-market-my-listings></div>
+        <p class="market-none" data-market-no-listings hidden>Своих лотов нет.</p>
+
+        <h3 class="market-subhead">Мои сделки</h3>
+        <div class="lots" data-market-my-trades></div>
+        <p class="market-none" data-market-no-trades hidden>Активных сделок нет.</p>
+
+        <h3 class="market-subhead">Посылки</h3>
+        <div class="lots" data-market-my-deliveries></div>
+        <p class="market-none" data-market-no-deliveries hidden>Ничего не ждёт.</p>
+        <p class="market-note" data-market-deliveries-note hidden>
+          Забрать их можно только в игре: <span class="code-chip">/market deliveries</span>. Сайт предметы не выдаёт — это сделано
+          нарочно, чтобы вещь никогда не существовала в двух местах сразу.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="notice">
+        <p><strong>Выложить лот можно только в игре.</strong></p>
+        <p>
+          Предмет нужно держать в руках, поэтому начало всегда в Minecraft: <span class="code-chip">/market</span> открывает окно,
+          где вы отмечаете, что отдаёте, и выбираете в каталоге, что хотите взамен. Здесь, на сайте, удобно следить за доской и
+          отвечать на предложения.
+        </p>
+      </div>
+    </section>
+  </div>
+</Base>

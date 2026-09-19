@@ -53,6 +53,19 @@ export interface Config {
       maxRequests: number;
     };
   };
+  market: {
+    /** base URL of the marketplace plugin API, null while the marketplace is switched off */
+    url: string | null;
+    /** shared secret the plugin expects, null while the marketplace is switched off */
+    token: string | null;
+    listingsCacheSeconds: number;
+    timeoutMs: number;
+    /** actions reach the game server, so they get a stricter limit than ordinary reads */
+    rateLimit: {
+      windowSeconds: number;
+      maxRequests: number;
+    };
+  };
   skins: {
     uploadDir: string;
     maxUploadBytes: number;
@@ -177,6 +190,34 @@ export function loadConfig(env: Env = process.env): Config {
     problems.push("MINECRAFT_API_TOKEN must be at least 24 characters, or empty to switch the Minecraft integration off");
   }
 
+  // the marketplace needs both halves: an address without a token would talk to the plugin as a stranger, and a token
+  // without an address has nowhere to go. Either both are set, or the section stays switched off.
+  let marketUrl: string | null = null;
+  const rawMarketUrl = text("MARKET_API_URL", "");
+  if (rawMarketUrl) {
+    try {
+      const url = new URL(rawMarketUrl);
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error("unsupported protocol");
+      }
+      const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1";
+      if (!loopback && url.protocol !== "https:") {
+        // the token travels in a header: off this machine it may not travel in the clear
+        problems.push("MARKET_API_URL must use https unless it points at 127.0.0.1");
+      }
+      marketUrl = url.href.replace(/\/+$/, "");
+    } catch {
+      problems.push("MARKET_API_URL must be an http(s) URL, for example http://127.0.0.1:8788/api/v1/market");
+    }
+  }
+  const marketToken = text("MARKET_API_TOKEN", "");
+  if (marketToken && marketToken.length < 24) {
+    problems.push("MARKET_API_TOKEN must be at least 24 characters, or empty to switch the marketplace off");
+  }
+  if (Boolean(marketUrl) !== Boolean(marketToken)) {
+    problems.push("MARKET_API_URL and MARKET_API_TOKEN must be set together, or both left empty");
+  }
+
   // an empty code closes registration instead of letting everyone in
   const inviteCode = text("REGISTER_INVITE_CODE", "");
   if (inviteCode && inviteCode.length < 6) {
@@ -223,6 +264,16 @@ export function loadConfig(env: Env = process.env): Config {
       rateLimit: {
         windowSeconds: integer("AUTH_RATE_LIMIT_WINDOW_SECONDS", 900, 10, 86400),
         maxRequests: integer("AUTH_RATE_LIMIT_MAX_REQUESTS", 10, 1, 1000),
+      },
+    },
+    market: {
+      url: marketUrl && marketToken ? marketUrl : null,
+      token: marketUrl && marketToken ? marketToken : null,
+      listingsCacheSeconds: integer("MARKET_CACHE_SECONDS", 10, 0, 600),
+      timeoutMs: integer("MARKET_TIMEOUT_MS", 4000, 200, 30000),
+      rateLimit: {
+        windowSeconds: integer("MARKET_ACTION_LIMIT_WINDOW_SECONDS", 60, 10, 86400),
+        maxRequests: integer("MARKET_ACTION_LIMIT_MAX_REQUESTS", 20, 1, 10000),
       },
     },
     skins: {

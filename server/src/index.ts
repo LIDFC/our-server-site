@@ -19,10 +19,11 @@ import {
   staticCandidates,
 } from "./http.ts";
 import { createRateLimiter } from "./rateLimit.ts";
-import { createAccountService } from "./services/accounts.ts";
+import { createAccountService, type PublicUser } from "./services/accounts.ts";
 import { createFileGalleryStore } from "./services/gallery.ts";
 import { createHistoryStore, startHistorySampler } from "./services/history.ts";
 import { createLauncherService } from "./services/launcher.ts";
+import { createMarketService, type TradeAction } from "./services/market.ts";
 import { createMinecraftDirectory } from "./services/minecraft.ts";
 import { createSkinService } from "./services/skins.ts";
 import { createSkinSync } from "./services/skinSync.ts";
@@ -38,6 +39,20 @@ const GUARDED_AUTH_PATHS = new Set(["/api/auth/register", "/api/auth/login", "/a
 const SESSION_SWEEP_MS = 3_600_000;
 const SKIN_UPLOAD_PATH = "/api/skins";
 const SKIN_PUBLIC_PREFIX = "/skins/";
+const MARKET_TYPES = new Set(["GIVEAWAY", "TRADE", "WANTED", "GIFT"]);
+const TRADE_ACTIONS = new Set<TradeAction>(["accept", "decline", "confirm"]);
+
+/** A query parameter that must be a whole number in range. Null means the request was wrong, not that it was absent. */
+function wholeNumber(raw: string | null, fallback: number, min: number, max: number): number | null {
+  if (raw === null || raw === "") {
+    return fallback;
+  }
+  if (!/^\d{1,6}$/.test(raw)) {
+    return null;
+  }
+  const value = Number(raw);
+  return value >= min && value <= max ? value : null;
+}
 
 export function createApp(config: Config) {
   const status = createStatusService(config);
@@ -50,15 +65,74 @@ export function createApp(config: Config) {
   const skins = createSkinService(db, config);
   const minecraftDirectory = createMinecraftDirectory(config);
   const skinSync = createSkinSync(accounts, skins, minecraftDirectory);
+  const market = createMarketService(config);
   const limiter = createRateLimiter(config.rateLimit);
   const authLimiter = createRateLimiter(config.auth.rateLimit);
   const uploadLimiter = createRateLimiter(config.skins.rateLimit);
+  const marketLimiter = createRateLimiter(config.market.rateLimit);
   const headers = securityHeaders(config.map.url);
 
   const sessionCookie = (token: string): string =>
     serializeCookie(SESSION_COOKIE, token, { maxAgeSeconds: config.auth.sessionTtlDays * 86_400, secure: config.auth.cookieSecure });
   const clearedCookie = (): string => serializeCookie(SESSION_COOKIE, "", { maxAgeSeconds: 0, secure: config.auth.cookieSecure });
   const sessionToken = (req: IncomingMessage): string => parseCookies(req.headers.cookie)[SESSION_COOKIE] ?? "";
+
+  /**
+   * The Minecraft UUID behind a site account. Already linked accounts answer from the site's own database; the rest
+   * are looked up in the server's usercache.json, which is the Minecraft server's own record of who is who. The
+   * nickname comes from the account, never from the request, so nobody can claim to be somebody else.
+   */
+  const minecraftUuidFor = async (user: PublicUser): Promise<string | null> => {
+    const known = accounts.minecraftUuidOf(user.id);
+    if (known) {
+      return known;
+    }
+    const fromServer = await minecraftDirectory.uuidFor(user.minecraftUsername);
+    if (!fromServer) {
+      return null;
+    }
+    return accounts.linkMinecraftUuid(user.id, fromServer) ? fromServer : null;
+  };
+
+  /** Runs a marketplace action for the signed in player. The UUID is always the site's, never the browser's. */
+  const marketAction = async (
+    req: IncomingMessage,
+    res: ServerResponse,
+    id: unknown,
+    field: string,
+    run: (uuid: string, id: number) => Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; status: number; error: string; message: string }>,
+  ): Promise<void> => {
+    if (!market.enabled) {
+      sendError(res, 503, "market-disabled", "The marketplace is not configured");
+      return;
+    }
+    const user = accounts.current(sessionToken(req));
+    if (!user) {
+      sendError(res, 401, "unauthenticated", "Sign in first");
+      return;
+    }
+    if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+      sendError(res, 400, "invalid-body", `${field} must be a positive whole number`);
+      return;
+    }
+    const attempt = marketLimiter.check(`user:${user.id}`);
+    if (!attempt.allowed) {
+      res.setHeader("Retry-After", String(attempt.retryAfterSeconds));
+      sendError(res, 429, "rate-limited", "Too many marketplace actions, try again later");
+      return;
+    }
+    const uuid = await minecraftUuidFor(user);
+    if (!uuid) {
+      sendError(res, 409, "minecraft-not-linked", "Log in to the Minecraft server once so the account can be linked");
+      return;
+    }
+    const result = await run(uuid, id);
+    if (!result.ok) {
+      sendError(res, result.status, result.error, result.message);
+      return;
+    }
+    sendJson(res, 200, result.value);
+  };
 
   const routes: Record<string, Handler> = {
     "/api/health": async () => ({ body: { ok: true } }),
@@ -71,6 +145,7 @@ export function createApp(config: Config) {
         address: config.minecraft.publicAddress,
         map: { url: config.map.url, world: config.map.world },
         launcherRepo: config.launcher.repo,
+        market: { enabled: market.enabled },
       },
     }),
 
@@ -118,6 +193,62 @@ export function createApp(config: Config) {
     "/api/gallery": async () => ({ body: { items: await gallery.list() }, cacheSeconds: 60 }),
 
     "/api/launcher/release": async () => ({ body: await launcher.latest(), cacheSeconds: 300 }),
+
+    "/api/market/listings": async (url) => {
+      const rawType = url.searchParams.get("type");
+      if (rawType !== null && !MARKET_TYPES.has(rawType)) {
+        return { status: 400, body: { error: "invalid-type", message: `type must be one of ${[...MARKET_TYPES].join(", ")}` } };
+      }
+      const limit = wholeNumber(url.searchParams.get("limit"), 25, 1, 100);
+      const offset = wholeNumber(url.searchParams.get("offset"), 0, 0, 10_000);
+      if (limit === null || offset === null) {
+        return { status: 400, body: { error: "invalid-page", message: "limit must be 1..100 and offset 0..10000" } };
+      }
+      const result = await market.listings(rawType, limit, offset);
+      if (!result.ok) {
+        return { status: result.status, body: { error: result.error, message: result.message } };
+      }
+      // the answer is already cached inside the service; the browser gets a short cache too
+      return { body: { listings: result.value, limit, offset }, cacheSeconds: config.market.listingsCacheSeconds };
+    },
+  };
+
+  /**
+   * What the signed in player has on the marketplace. Three plugin calls in one answer, so the page renders in one go
+   * instead of flickering three times.
+   */
+  const sessionRoutes: Record<string, (url: URL, user: PublicUser) => Promise<{ status?: number; body: unknown }>> = {
+    "/api/market/mine": async (_url, user) => {
+      if (!market.enabled) {
+        return { status: 503, body: { error: "market-disabled", message: "The marketplace is not configured" } };
+      }
+      const uuid = await minecraftUuidFor(user);
+      if (!uuid) {
+        return {
+          status: 200,
+          body: { linked: false, minecraftUsername: user.minecraftUsername, listings: [], trades: [], deliveries: [] },
+        };
+      }
+      const [listings, trades, deliveries] = await Promise.all([
+        market.listingsOf(uuid),
+        market.tradesOf(uuid),
+        market.deliveriesOf(uuid),
+      ]);
+      const failed = [listings, trades, deliveries].find((part) => !part.ok);
+      if (failed && !failed.ok) {
+        return { status: failed.status, body: { error: failed.error, message: failed.message } };
+      }
+      return {
+        body: {
+          linked: true,
+          minecraftUuid: uuid,
+          minecraftUsername: user.minecraftUsername,
+          listings: listings.ok ? listings.value : [],
+          trades: trades.ok ? trades.value : [],
+          deliveries: deliveries.ok ? deliveries.value : [],
+        },
+      };
+    },
   };
 
   /**
@@ -229,6 +360,23 @@ export function createApp(config: Config) {
       res.statusCode = 204;
       res.setHeader("Cache-Control", "no-store");
       res.end();
+    },
+
+    /**
+     * Marketplace actions. The listing or trade id is the only thing the browser chooses; the plugin then checks that
+     * this player may touch it, so a wrong id is a refusal rather than somebody else's listing being cancelled.
+     */
+    "/api/market/listings/cancel": async (req, res, body) => {
+      await marketAction(req, res, body["listingId"], "listingId", (uuid, id) => market.cancelListing(uuid, id));
+    },
+
+    "/api/market/trades/action": async (req, res, body) => {
+      const action = body["action"];
+      if (typeof action !== "string" || !TRADE_ACTIONS.has(action as TradeAction)) {
+        sendError(res, 400, "invalid-body", `action must be one of ${[...TRADE_ACTIONS].join(", ")}`);
+        return;
+      }
+      await marketAction(req, res, body["tradeId"], "tradeId", (uuid, id) => market.trade(uuid, id, action as TradeAction));
     },
 
     "/api/auth/password": async (req, res, body) => {
@@ -363,6 +511,18 @@ export function createApp(config: Config) {
         minecraftUsername: user.minecraftUsername,
         limits: { maxBytes: config.skins.maxUploadBytes, sizes: ["64x64", "64x32"], types: ["image/png", "image/jpeg"] },
       });
+      return;
+    }
+
+    const sessionRoute = sessionRoutes[url.pathname];
+    if (sessionRoute) {
+      const user = accounts.current(sessionToken(req));
+      if (!user) {
+        sendError(res, 401, "unauthenticated", "Sign in first");
+        return;
+      }
+      const result = await sessionRoute(url, user);
+      sendJson(res, result.status ?? 200, result.body);
       return;
     }
 

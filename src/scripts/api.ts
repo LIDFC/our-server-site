@@ -15,6 +15,52 @@ export interface SiteConfig {
   address: string;
   map: { url: string | null; world: string };
   launcherRepo: string;
+  market: { enabled: boolean };
+}
+
+export interface MarketItem {
+  summary: string;
+  amount: number;
+}
+
+export interface MarketListing {
+  id: number;
+  type: "GIVEAWAY" | "TRADE" | "WANTED" | "GIFT";
+  state: string;
+  ownerUuid: string;
+  recipientUuid: string | null;
+  summary: string;
+  createdAt: string;
+  offered: MarketItem[];
+  wanted: MarketItem[];
+}
+
+export interface MarketTrade {
+  id: number;
+  listingId: number;
+  ownerUuid: string;
+  buyerUuid: string;
+  state: "PENDING" | "ACCEPTED" | "CONFIRMED" | "COMPLETED" | "REJECTED" | "CANCELLED" | "EXPIRED";
+  confirmations: ("OWNER" | "BUYER")[];
+  createdAt: string;
+}
+
+export interface MarketDelivery {
+  id: number;
+  summary: string;
+  amount: number;
+  reason: string;
+  createdAt: string;
+}
+
+/** What the signed in player has on the marketplace. `linked: false` means the server has never seen this nickname. */
+export interface MarketMine {
+  linked: boolean;
+  minecraftUuid: string;
+  minecraftUsername: string;
+  listings: MarketListing[];
+  trades: MarketTrade[];
+  deliveries: MarketDelivery[];
 }
 
 export type DownloadId =

@@ -25,4 +25,5 @@ export const NAV = [
   { href: "/gallery", label: "Галерея" },
   { href: "/launcher", label: "Лаунчер" },
   { href: "/skins", label: "Скины" },
+  { href: "/market", label: "Рынок" },
 ];

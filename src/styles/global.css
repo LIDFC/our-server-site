@@ -891,3 +891,116 @@ kbd {
     scroll-behavior: auto !important;
   }
 }
+
+/* --- рынок -------------------------------------------------------------------------- */
+
+.market-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.market-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* the chosen filter is the only lit button, so the current view is readable without colour alone */
+.market-filters [aria-pressed="true"] {
+  border-color: var(--lamp);
+  color: var(--lamp-bright);
+}
+
+.market-subhead {
+  margin: 2rem 0 1rem;
+  font-size: var(--text-h3);
+}
+
+.market-none,
+.market-note {
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.lots {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+}
+
+.lots:empty {
+  display: none;
+}
+
+.lot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--panel);
+}
+
+.lot__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.lot__title {
+  margin: 0;
+  font-size: var(--text-base);
+}
+
+.lot__badge {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  color: var(--ink-soft);
+  font-size: var(--text-small);
+  white-space: nowrap;
+}
+
+.lot__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.lot__line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: var(--text-small);
+}
+
+.lot__label {
+  color: var(--ink-muted);
+}
+
+.lot__hint {
+  color: var(--ink-muted);
+}
+
+.lot__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+
+.lot__error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-small);
+}
