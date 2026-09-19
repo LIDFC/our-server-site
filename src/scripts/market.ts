@@ -38,6 +38,18 @@ const TRADE_STATES: Record<MarketTrade["state"], string> = {
 
 const FINISHED: MarketTrade["state"][] = ["COMPLETED", "REJECTED", "CANCELLED", "EXPIRED"];
 
+const LISTING_STATES: Record<string, string> = {
+  DRAFT: "черновик",
+  ACTIVE: "на рынке",
+  PENDING_TRADE: "идёт сделка",
+  COMPLETED: "завершён",
+  CANCELLED: "снят",
+  EXPIRED: "истёк",
+};
+
+/** What the sheet is showing. A trade is fetched by id; a lot is already in hand, so only its id is kept. */
+type SheetTarget = { kind: "trade"; id: number } | { kind: "listing"; id: number };
+
 function finished(trade: MarketTrade): boolean {
   return FINISHED.includes(trade.state);
 }
@@ -221,7 +233,21 @@ export function initMarketPage(): void {
 
   let filter = "";
   let showArchived = false;
-  let openTrade: number | null = null;
+  /** what the sheet is showing, so a refresh redraws it instead of leaving stale numbers on screen */
+  let openTarget: SheetTarget | null = null;
+  /** the Minecraft UUID of whoever is signed in, so a lot can be recognised as their own */
+  let myUuid: string | null = null;
+  /**
+   * Every lot the page has seen, by id. A lot needs no endpoint of its own: the board and "Мои лоты" already answer
+   * with the whole thing, so the sheet reads from here and stays in step with the twenty second refresh.
+   */
+  const knownListings = new Map<number, { listing: MarketListing; players: MarketPeople }>();
+
+  const remember = (listings: MarketListing[], players: MarketPeople): void => {
+    for (const listing of listings) {
+      knownListings.set(listing.id, { listing, players });
+    }
+  };
 
   const drawBoard = async (): Promise<void> => {
     if (!list) {
@@ -230,6 +256,7 @@ export function initMarketPage(): void {
     try {
       const query = filter ? `?type=${filter}&limit=50` : "?limit=50";
       const board = await getJson<MarketBoard>(`/api/market/listings${query}`);
+      remember(board.listings, board.players);
       list.replaceChildren(...board.listings.map((listing) => listingTile(listing, board.players)));
       list.setAttribute("aria-busy", "false");
       show(empty, board.listings.length === 0);
@@ -244,7 +271,7 @@ export function initMarketPage(): void {
 
   function listingTile(listing: MarketListing, players: MarketPeople): HTMLElement {
     const article = document.createElement("article");
-    article.className = "lot";
+    article.className = "lot lot--open";
 
     const head = document.createElement("header");
     head.className = "lot__head";
@@ -255,6 +282,14 @@ export function initMarketPage(): void {
       ? null
       : { title: "хочет взамен", items: listing.wanted, fallback: "что предложите" };
     article.append(exchange({ title: "отдаёт", items: listing.offered, fallback: "ничего" }, wantsSide));
+
+    // the whole tile opens the lot; a real button under the content keeps it reachable from the keyboard
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "lot__open";
+    open.textContent = `Лот #${listing.id}: подробности`;
+    open.addEventListener("click", () => openSheet({ kind: "listing", id: listing.id }));
+    article.append(open);
     return article;
   }
 
@@ -278,6 +313,8 @@ export function initMarketPage(): void {
     }
     show(unlinked, false);
     show(mineBlock, true);
+    myUuid = mine.minecraftUuid;
+    remember(mine.listings, mine.players);
 
     const redraw = (): void => {
       void drawMine();
@@ -319,8 +356,8 @@ export function initMarketPage(): void {
       show(find("[data-market-deliveries-note]"), mine.deliveries.length > 0);
     }
 
-    if (openTrade !== null) {
-      void fillSheet(openTrade, redraw);
+    if (openTarget !== null) {
+      void fillSheet(openTarget, redraw);
     }
   };
 
@@ -329,7 +366,7 @@ export function initMarketPage(): void {
     const other = owner ? trade.buyerUuid : trade.ownerUuid;
 
     const article = document.createElement("article");
-    article.className = "lot lot--trade";
+    article.className = "lot lot--open";
     if (finished(trade)) {
       article.classList.add("lot--done");
     }
@@ -349,7 +386,7 @@ export function initMarketPage(): void {
     open.type = "button";
     open.className = "lot__open";
     open.textContent = `Сделка #${trade.id}: подробности`;
-    open.addEventListener("click", () => openSheet(trade.id, redraw));
+    open.addEventListener("click", () => openSheet({ kind: "trade", id: trade.id }, redraw));
     article.append(open);
 
     const actions = document.createElement("footer");
@@ -402,18 +439,75 @@ export function initMarketPage(): void {
 
   // the sheet -----------------------------------------------------------------------------------------------------
 
-  function openSheet(tradeId: number, redraw: () => void): void {
+  function openSheet(target: SheetTarget, redraw?: () => void): void {
     if (!sheet) {
       return;
     }
-    openTrade = tradeId;
-    void fillSheet(tradeId, redraw);
+    openTarget = target;
+    void fillSheet(target, redraw ?? (() => undefined));
     if (!sheet.open) {
       sheet.showModal();
     }
   }
 
-  async function fillSheet(tradeId: number, redraw: () => void): Promise<void> {
+  async function fillSheet(target: SheetTarget, redraw: () => void): Promise<void> {
+    if (target.kind === "listing") {
+      fillListingSheet(target.id, redraw);
+      return;
+    }
+    await fillTradeSheet(target.id, redraw);
+  }
+
+  /**
+   * A lot, from what the page already has. The board and "Мои лоты" answer with the whole lot, so there is nothing to
+   * fetch — and the twenty second refresh keeps an open sheet honest instead of leaving yesterday's numbers on it.
+   */
+  function fillListingSheet(listingId: number, redraw: () => void): void {
+    if (!sheetBody) {
+      return;
+    }
+    const known = knownListings.get(listingId);
+    if (!known) {
+      sheetBody.replaceChildren(note("Лот уже закрыт или снят с рынка."));
+      return;
+    }
+    const { listing, players } = known;
+    const mine = myUuid !== null && listing.ownerUuid === myUuid;
+
+    const title = document.createElement("h2");
+    title.className = "sheet__title";
+    title.textContent = `Лот #${listing.id} · ${TYPE_NAMES[listing.type] ?? listing.type}`;
+
+    const line = document.createElement("p");
+    line.className = "sheet__line";
+    const when = listing.createdAt ? new Date(listing.createdAt) : null;
+    const date = when && !Number.isNaN(when.getTime()) ? ` · выложен ${when.toLocaleDateString("ru-RU")}` : "";
+    line.textContent = `${LISTING_STATES[listing.state] ?? listing.state}${date}`;
+
+    const wantsSide = listing.type === "GIVEAWAY" || listing.type === "GIFT"
+      ? null
+      : { title: "хочет взамен", items: listing.wanted, fallback: "что предложите" };
+    const parties = exchange({ title: "отдаёт", items: listing.offered, fallback: "ничего" }, wantsSide);
+
+    const actions = document.createElement("div");
+    actions.className = "sheet__actions";
+    if (mine) {
+      actions.append(
+        button("Снять лот", "secondary", () => send("/api/market/listings/cancel", { listingId: listing.id }), () => {
+          sheet?.close();
+          redraw();
+        }),
+      );
+    } else {
+      // the marketplace API can cancel and answer trades, nothing else: taking a lot needs the item in your hand
+      const how = listing.type === "GIVEAWAY" || listing.type === "GIFT" ? `/market take ${listing.id}` : `/market offer ${listing.id}`;
+      actions.append(note(`Забрать и предложить обмен можно только в игре: ${how}`));
+    }
+
+    sheetBody.replaceChildren(title, who(players, listing.ownerUuid), line, parties, actions);
+  }
+
+  async function fillTradeSheet(tradeId: number, redraw: () => void): Promise<void> {
     if (!sheet || !sheetBody) {
       return;
     }
@@ -445,7 +539,7 @@ export function initMarketPage(): void {
     actions.className = "sheet__actions";
     const afterAction = (): void => {
       redraw();
-      void fillSheet(tradeId, redraw);
+      void fillTradeSheet(tradeId, redraw);
     };
     if (finished(trade)) {
       actions.append(note("Сделка закрыта. Её можно убрать из списка кнопкой «В архив»."));
@@ -470,7 +564,7 @@ export function initMarketPage(): void {
   }
 
   sheet?.addEventListener("close", () => {
-    openTrade = null;
+    openTarget = null;
   });
   // clicking the backdrop closes it, the way a sheet is expected to behave
   sheet?.addEventListener("click", (event) => {

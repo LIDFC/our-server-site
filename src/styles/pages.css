@@ -476,11 +476,45 @@
 
 .place {
   display: grid;
+  position: relative;
   grid-template-rows: auto 1fr;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--ground-raised);
+}
+
+/* та же механика, что у плиток рынка: настоящая кнопка под содержимым, доступная с клавиатуры */
+.place__open {
+  position: absolute;
+  z-index: 0;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: none;
+  cursor: pointer;
+  inset: 0;
+  overflow: hidden;
+  text-indent: -200vw;
+}
+
+.place__open:hover {
+  background: rgb(255 255 255 / 0.03);
+}
+
+.place__open:focus-visible {
+  outline: 2px solid var(--lamp);
+  outline-offset: 2px;
+}
+
+.place--open > *:not(.place__open) {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ссылка «на карте» внутри карточки должна остаться ссылкой, а не частью кнопки */
+.place--open .place__body a {
+  pointer-events: auto;
 }
 
 .place__image {
