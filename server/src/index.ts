@@ -301,14 +301,37 @@ export function createApp(config: Config) {
         return { status: 409, body: { error: "minecraft-not-linked", message: "Log in to the Minecraft server once" } };
       }
       const detail = await market.tradeDetail(id);
-      if (!detail.ok) {
-        return { status: detail.status, body: { error: detail.error, message: detail.message } };
+      if (detail.ok) {
+        if (detail.value.ownerUuid !== uuid && detail.value.buyerUuid !== uuid) {
+          return { status: 403, body: { error: "not-participant", message: "This trade is not yours" } };
+        }
+        const players = await people.describe([detail.value.ownerUuid, detail.value.buyerUuid]);
+        return { body: { trade: detail.value, players, you: uuid, partial: false } };
       }
-      if (detail.value.ownerUuid !== uuid && detail.value.buyerUuid !== uuid) {
-        return { status: 403, body: { error: "not-participant", message: "This trade is not yours" } };
+
+      /*
+       * An older plugin has no endpoint for a single trade. Rather than showing nothing, the trade is taken from this
+       * player's own list — which also settles who is allowed to see it — and the listing behind it supplies the
+       * owner's half. What the buyer offered is the one thing that genuinely needs the newer plugin.
+       */
+      const mine = await market.tradesOf(uuid);
+      if (!mine.ok) {
+        return { status: mine.status, body: { error: mine.error, message: mine.message } };
       }
-      const players = await people.describe([detail.value.ownerUuid, detail.value.buyerUuid]);
-      return { body: { trade: detail.value, players, you: uuid } };
+      const trade = mine.value.find((candidate) => candidate.id === id);
+      if (!trade) {
+        return { status: 404, body: { error: "trade-not-found", message: "No such trade of yours" } };
+      }
+      const listing = await market.listing(trade.listingId);
+      const players = await people.describe([trade.ownerUuid, trade.buyerUuid]);
+      return {
+        body: {
+          trade: { ...trade, ownerItems: listing.ok ? listing.value.offered : [], buyerItems: [] },
+          players,
+          you: uuid,
+          partial: true,
+        },
+      };
     },
   };
 

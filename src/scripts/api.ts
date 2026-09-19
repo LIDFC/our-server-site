@@ -84,6 +84,8 @@ export interface MarketTradeDetail extends MarketTrade {
 }
 
 export interface MarketTradeAnswer {
+  /** true when the plugin is too old to report both halves, so the buyer's side is missing */
+  partial: boolean;
   trade: MarketTradeDetail;
   players: MarketPeople;
   you: string;

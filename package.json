@@ -16,11 +16,13 @@
     "users": "node --env-file-if-exists=.env server/src/cli/users.ts",
     "typecheck": "tsc -p server/tsconfig.json",
     "test": "node --test \"server/test/**/*.test.ts\"",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run typecheck && npm test && npm run build",
+    "icons": "node scripts/build-item-icons.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.3",
     "astro": "^7.3.2",
+    "minecraft-assets": "^1.19.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {

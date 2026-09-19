@@ -14,7 +14,7 @@ import {
   type MarketTradeAnswer,
 } from "./api";
 import { messageFor } from "./forms";
-import { glyph } from "./glyphs";
+import { icon } from "./icons";
 import { parseItem } from "./items";
 
 const REFRESH_MS = 20_000;
@@ -98,7 +98,7 @@ function stack(item: MarketItem): HTMLElement {
     label.title = parsed.id.replace(/_/g, " ");
   }
 
-  row.append(glyph(parsed.id), count, label);
+  row.append(icon(parsed.id, parsed.label), count, label);
   return row;
 }
 
@@ -142,6 +142,27 @@ function exchange(left: { title: string; items: MarketItem[]; fallback: string }
     wrap.append(mark, side(right));
   }
   return wrap;
+}
+
+/**
+ * Clears a finished trade out of the list.
+ *
+ * <p>It hides rather than deletes, and it cannot be otherwise: the marketplace's ledger is append only, which is what
+ * proves nothing was duplicated. The trade stays under "Архив", where it can be brought back.
+ */
+function remove(tradeId: number, after: () => void): HTMLButtonElement {
+  const node = document.createElement("button");
+  node.type = "button";
+  node.className = "lot__remove";
+  node.textContent = "×";
+  node.title = "Убрать из списка";
+  node.setAttribute("aria-label", `Убрать сделку #${tradeId} из списка`);
+  node.addEventListener("click", (event) => {
+    event.stopPropagation();
+    node.disabled = true;
+    void send("/api/market/trades/archive", { tradeId }).then(after);
+  });
+  return node;
 }
 
 function badge(text: string): HTMLElement {
@@ -333,15 +354,13 @@ export function initMarketPage(): void {
 
     const actions = document.createElement("footer");
     actions.className = "lot__actions";
-    if (finished(trade)) {
+    if (finished(trade) && trade.archived) {
       actions.append(
-        button(
-          trade.archived ? "Вернуть из архива" : "В архив",
-          "secondary",
-          () => send("/api/market/trades/archive", { tradeId: trade.id, restore: trade.archived }),
-          redraw,
-        ),
+        button("Вернуть в список", "secondary", () => send("/api/market/trades/archive", { tradeId: trade.id, restore: true }), redraw),
       );
+    } else if (finished(trade)) {
+      // a finished trade is cleared away with the cross in its corner, so the tile stays quiet
+      head.append(remove(trade.id, redraw));
     } else {
       actions.append(...answers(trade, owner, redraw));
     }
@@ -402,7 +421,7 @@ export function initMarketPage(): void {
     try {
       answer = await getJson<MarketTradeAnswer>(`/api/market/trade?id=${tradeId}`);
     } catch {
-      sheetBody.replaceChildren(note("Подробности этой сделки сейчас недоступны. В игре они видны в окне «Мои сделки»."));
+      sheetBody.replaceChildren(note("Эта сделка сейчас не читается. Обновите страницу или загляните в игру."));
       return;
     }
     const trade = answer.trade;
@@ -419,7 +438,7 @@ export function initMarketPage(): void {
 
     const parties = exchange(
       { title: owner ? "вы отдаёте" : "вы получаете", items: trade.ownerItems, fallback: "ничего" },
-      { title: owner ? "вы получаете" : "вы отдаёте", items: trade.buyerItems, fallback: "ничего" },
+      { title: owner ? "вы получаете" : "вы отдаёте", items: trade.buyerItems, fallback: answer.partial ? "видно в игре" : "ничего" },
     );
 
     const actions = document.createElement("div");
@@ -434,7 +453,13 @@ export function initMarketPage(): void {
       actions.append(...answers(trade, owner, afterAction));
     }
 
-    sheetBody.replaceChildren(title, who(answer.players, other), line, parties, actions);
+    const pieces: HTMLElement[] = [title, who(answer.players, other), line, parties];
+    if (answer.partial) {
+      // the buyer's half needs the newer plugin; saying so beats showing an empty column with no explanation
+      pieces.push(note("Что предложил покупатель, видно в игре: на сервере стоит плагин прошлой версии."));
+    }
+    pieces.push(actions);
+    sheetBody.replaceChildren(...pieces);
   }
 
   function note(text: string): HTMLElement {

@@ -68,6 +68,7 @@ export interface MarketService {
   /** false while MARKET_API_URL and MARKET_API_TOKEN are not set: the section then says so instead of failing. */
   readonly enabled: boolean;
   listings(type: string | null, limit: number, offset: number): Promise<Result<MarketListing[]>>;
+  listing(listingId: number): Promise<Result<MarketListing>>;
   tradeDetail(tradeId: number): Promise<Result<MarketTradeDetail>>;
   listingsOf(uuid: string): Promise<Result<MarketListing[]>>;
   tradesOf(uuid: string): Promise<Result<MarketTrade[]>>;
@@ -211,9 +212,25 @@ export function createMarketService(config: Config): MarketService {
       return cached.value;
     },
 
+    async listing(listingId) {
+      const result = await call(`/listings/${listingId}`, { method: "GET" });
+      if (!result.ok) {
+        return result;
+      }
+      const value = result.value as unknown as MarketListing;
+      return {
+        ok: true as const,
+        value: {
+          ...value,
+          offered: Array.isArray(value.offered) ? value.offered : [],
+          wanted: Array.isArray(value.wanted) ? value.wanted : [],
+        },
+      };
+    },
+
     /**
      * One trade with what each side put up. An older plugin has no such endpoint and answers with a refusal, which
-     * the page treats as "details are only in the game" rather than as a failure.
+     * the caller turns into a partial answer built from the listing instead.
      */
     async tradeDetail(tradeId) {
       const result = await call(`/trades/${tradeId}`, { method: "GET" });

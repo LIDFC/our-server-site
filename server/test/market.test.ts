@@ -27,9 +27,11 @@ interface Call {
  * A stand in for the marketplace plugin. It records what the site sent, which is the whole point of these tests: the
  * site must put the account's own UUID into the request and must never pass one through from the browser.
  */
-function fakePlugin(): { server: Server; calls: Call[]; fail: (code: string | null) => void; start(): Promise<string> } {
+function fakePlugin(): { server: Server; calls: Call[]; fail: (code: string | null) => void; beOld: (old: boolean) => void; start(): Promise<string> } {
   const calls: Call[] = [];
   let failWith: string | null = null;
+  // an older plugin has no endpoint for a single trade
+  let old = false;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = [];
@@ -64,6 +66,11 @@ function fakePlugin(): { server: Server; calls: Call[]; fail: (code: string | nu
         send(409, { error: { code: failWith, message: "refused" } });
         return;
       }
+      if (old && req.method === "GET" && /^\/trades\/\d+$/.test(url)) {
+        // an older plugin has no endpoint for a single trade: it falls through to its "unknown endpoint"
+        send(404, { error: { code: "NOT_FOUND", message: "Unknown endpoint" } });
+        return;
+      }
 
       const listing = {
         id: 12,
@@ -78,6 +85,8 @@ function fakePlugin(): { server: Server; calls: Call[]; fail: (code: string | nu
       };
       if (url.startsWith("/listings?")) {
         send(200, { listings: [listing] });
+      } else if (/^\/listings\/\d+$/.test(url)) {
+        send(200, listing);
       } else if (url.includes("/listings") && url.includes("/players/")) {
         send(200, { listings: [listing] });
       } else if (url.includes("/trades") && url.includes("/players/")) {
@@ -114,6 +123,9 @@ function fakePlugin(): { server: Server; calls: Call[]; fail: (code: string | nu
     calls,
     fail: (code) => {
       failWith = code;
+    },
+    beOld: (value) => {
+      old = value;
     },
     start: async () => {
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -328,6 +340,21 @@ describe("marketplace section", () => {
 
     assert.equal((await get("/api/market/trade?id=4")).status, 401, "not signed in");
     assert.equal((await get("/api/market/trade?id=abc", lev)).status, 400);
+  });
+
+  it("still shows a trade when the plugin is too old to report both halves", async () => {
+    plugin.beOld(true);
+    const response = await get("/api/market/trade?id=4", lev);
+    assert.equal(response.status, 200, "details must open for every trade, old plugin or not");
+    const body = (await response.json()) as { partial: boolean; trade: { state: string; ownerItems: { summary: string }[]; buyerItems: unknown[] } };
+    assert.equal(body.partial, true);
+    assert.equal(body.trade.state, "PENDING", "the state still comes through");
+    assert.equal(body.trade.ownerItems[0]?.summary, "16x diamond", "the listing supplies the owner's half");
+    assert.deepEqual(body.trade.buyerItems, [], "and the buyer's half is honestly empty");
+
+    // and a trade this player has nothing to do with is still not readable
+    assert.equal((await get("/api/market/trade?id=999", lev)).status, 404);
+    plugin.beOld(false);
   });
 
   it("archives a trade for one player without touching the marketplace", async () => {

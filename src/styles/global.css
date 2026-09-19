@@ -896,9 +896,9 @@ kbd {
 /*
  * --- рынок ------------------------------------------------------------------------------------
  *
- * Расширение той же системы: графит, одна лампа. Один новый набор цветов — цвета самих предметов.
- * Они живут ТОЛЬКО внутри .glyph и не появляются ни на кнопках, ни на рамках, ни в статусах,
- * иначе сломается правило «янтарь — то, что нажимается, зелёный — только онлайн».
+ * Расширение той же системы: графит, одна лампа. Цвет в раздел приносят только две вещи —
+ * текстуры предметов и лицо игрока, то есть картинки из самой игры. На кнопках, рамках и
+ * статусах палитра прежняя: янтарь — то, что нажимается, зелёный — только онлайн.
  *
  * Громким на странице позволено быть одному элементу — линии обмена. Всё остальное тихое.
  */
@@ -1082,16 +1082,18 @@ kbd {
   min-width: 0;
 }
 
-.glyph {
+/* текстуры самой игры, 16x16: как и лицо игрока, увеличиваются без сглаживания */
+.icon {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  color: var(--glyph-ink, #8b9098);
-  fill: currentColor;
+  width: 22px;
+  height: 22px;
+  image-rendering: pixelated;
 }
 
-.glyph [fill="var(--glyph-lit)"] {
-  fill: color-mix(in srgb, var(--glyph-ink, #8b9098) 55%, #ffffff);
+.icon--unknown {
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--ground);
 }
 
 /* количество — это число, поэтому моноширинный: столбик цифр читается сразу */
@@ -1251,4 +1253,40 @@ kbd {
     justify-self: start;
     transform: rotate(90deg);
   }
+}
+
+/* крестик убирает завершённую сделку из списка; красный — единственное место, где он тут уместен */
+.lot__remove {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.lot__remove:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.lot__remove:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.lot__remove[disabled] {
+  opacity: 0.5;
+}
+
+/* крестик лежит в шапке плитки, а она перекрыта кнопкой «открыть» — вернём ему клики */
+.lot--trade .lot__remove {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
 }
