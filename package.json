@@ -17,7 +17,8 @@
     "typecheck": "tsc -p server/tsconfig.json",
     "test": "node --test \"server/test/**/*.test.ts\"",
     "check": "npm run typecheck && npm test && npm run build",
-    "icons": "node scripts/build-item-icons.mjs"
+    "icons": "node scripts/build-item-icons.mjs",
+    "names": "node scripts/build-item-names.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.3",

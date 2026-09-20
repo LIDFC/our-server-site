@@ -58,6 +58,42 @@ export type Result<T> = { ok: true; value: T } | Failure;
 
 export type TradeAction = "accept" | "decline" | "confirm";
 
+/** One occupied slot of a bound chest. The hash says which item it is; it is never the item itself. */
+export interface MarketChestSlot {
+  slot: number;
+  sha256: string;
+  amount: number;
+  summary: string;
+}
+
+/** A player chest as the plugin describes it, or `bound: false` when they have not set one up yet. */
+export interface MarketChest {
+  bound: boolean;
+  chestId: number;
+  kind: "SINGLE" | "DOUBLE";
+  size: number;
+  x: number;
+  y: number;
+  z: number;
+  digest: string;
+  slots: MarketChestSlot[];
+}
+
+/**
+ * A listing built in the browser out of chest slots.
+ *
+ * <p>`chestDigest` is what the page last saw the whole chest as, and it travels with the request on purpose: if
+ * the owner moved anything in the game since the page was drawn, the plugin refuses rather than take the wrong one.
+ */
+export interface ChestListingRequest {
+  type: "GIVEAWAY" | "TRADE" | "WANTED" | "GIFT";
+  chestDigest: string;
+  note: string | null;
+  recipientName: string | null;
+  take: { slot: number; sha256: string; amount: number }[];
+  wanted: { material: string; amount: number }[];
+}
+
 /** One trade with both halves, as `GET /trades/{id}` of the plugin answers it. */
 export interface MarketTradeDetail extends MarketTrade {
   ownerItems: MarketItem[];
@@ -73,6 +109,9 @@ export interface MarketService {
   listingsOf(uuid: string): Promise<Result<MarketListing[]>>;
   tradesOf(uuid: string): Promise<Result<MarketTrade[]>>;
   deliveriesOf(uuid: string): Promise<Result<MarketDelivery[]>>;
+  chestOf(uuid: string): Promise<Result<MarketChest>>;
+  listFromChest(uuid: string, request: ChestListingRequest): Promise<Result<Record<string, unknown>>>;
+  releaseChest(uuid: string): Promise<Result<Record<string, unknown>>>;
   cancelListing(uuid: string, listingId: number): Promise<Result<Record<string, unknown>>>;
   trade(uuid: string, tradeId: number, action: TradeAction): Promise<Result<Record<string, unknown>>>;
   health(): Promise<Result<Record<string, unknown>>>;
@@ -95,6 +134,17 @@ const ERRORS: Record<string, { status: number; error: string }> = {
   LISTING_ALREADY_TAKEN: { status: 409, error: "listing-already-taken" },
   LISTING_NOT_ACTIVE: { status: 409, error: "listing-not-active" },
   TRADE_NOT_ACCEPTED: { status: 409, error: "trade-not-accepted" },
+  PLAYER_NOT_FOUND: { status: 404, error: "player-not-found" },
+  EMPTY_LISTING: { status: 400, error: "empty-listing" },
+  TOO_MANY_ITEMS: { status: 400, error: "too-many-items" },
+  CHEST_NOT_BOUND: { status: 404, error: "chest-not-bound" },
+  CHEST_ALREADY_BOUND: { status: 409, error: "chest-already-bound" },
+  CHEST_MISSING: { status: 409, error: "chest-missing" },
+  CHEST_CHANGED: { status: 409, error: "chest-changed" },
+  CHEST_IN_USE: { status: 409, error: "chest-in-use" },
+  CHEST_BUSY: { status: 409, error: "chest-busy" },
+  CHEST_LOCKED: { status: 409, error: "chest-locked" },
+  CHEST_UNAVAILABLE: { status: 503, error: "chest-unavailable" },
   INTERNAL_ERROR: { status: 502, error: "market-failed" },
 };
 
@@ -274,6 +324,66 @@ export function createMarketService(config: Config): MarketService {
           createdAt: String(row["createdAt"] ?? ""),
         })) satisfies MarketDelivery[],
       };
+    },
+
+    /**
+     * What is in the player's bound chest right now.
+     *
+     * <p>Never cached, not even for a second. The board is the same for everybody and a few seconds stale costs
+     * nothing, but a chest is one person's, they may have just moved something in the game, and the fingerprint that
+     * comes back with it is what the next request is checked against.
+     */
+    async chestOf(uuid) {
+      const result = await call(`/players/${encodeURIComponent(uuid)}/chest`, { method: "GET" });
+      if (!result.ok) {
+        return result;
+      }
+      const value = result.value as unknown as MarketChest;
+      return {
+        ok: true as const,
+        value: {
+          bound: value.bound === true,
+          chestId: Number(value.chestId ?? 0),
+          kind: value.kind === "DOUBLE" ? ("DOUBLE" as const) : ("SINGLE" as const),
+          size: Number(value.size ?? 0),
+          x: Number(value.x ?? 0),
+          y: Number(value.y ?? 0),
+          z: Number(value.z ?? 0),
+          digest: String(value.digest ?? ""),
+          slots: Array.isArray(value.slots) ? value.slots : [],
+        },
+      };
+    },
+
+    /**
+     * Puts up a listing out of chosen chest slots.
+     *
+     * <p>The idempotency key is built from the fingerprint of the chest rather than from a fresh random value. A
+     * browser that retries the same request — a double click, a flaky connection — sends the same key and gets the
+     * same answer back, and a second listing is never created out of the same stack.
+     */
+    async listFromChest(uuid, request) {
+      return call("/listings/from-chest", {
+        method: "POST",
+        body: {
+          minecraftUuid: uuid,
+          type: request.type,
+          chestDigest: request.chestDigest,
+          note: request.note,
+          recipientName: request.recipientName,
+          take: request.take,
+          wanted: request.wanted,
+        },
+        idempotencyKey: `site-chest-${uuid}-${request.chestDigest.slice(0, 32)}`,
+      });
+    },
+
+    async releaseChest(uuid) {
+      return call(`/players/${encodeURIComponent(uuid)}/chest/release`, {
+        method: "POST",
+        body: { minecraftUuid: uuid },
+        idempotencyKey: `site-chest-release-${uuid}-${randomUUID()}`,
+      });
     },
 
     async cancelListing(uuid, listingId) {

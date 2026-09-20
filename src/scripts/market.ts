@@ -13,6 +13,7 @@ import {
   type MarketTrade,
   type MarketTradeAnswer,
 } from "./api";
+import { setupChest } from "./chest";
 import { messageFor } from "./forms";
 import { icon } from "./icons";
 import { parseItem } from "./items";
@@ -604,6 +605,13 @@ export function initMarketPage(): void {
           return;
         }
         whileVisible(drawMine, REFRESH_MS);
+        // the chest is read once and after every action rather than on the clock: a redraw in the middle of choosing
+        // stacks would throw the choice away
+        const chest = setupChest(page, () => {
+          void drawMine();
+          void drawBoard();
+        });
+        void chest.refresh();
       });
     })
     .catch(() => show(offline, true));

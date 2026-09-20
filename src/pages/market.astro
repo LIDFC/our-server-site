@@ -28,6 +28,80 @@ import Base from "../layouts/Base.astro";
       </div>
     </section>
 
+    <section class="section" aria-labelledby="market-chest-heading" data-chest hidden>
+      <div class="market-head">
+        <h2 id="market-chest-heading">Мой склад</h2>
+        <button class="button button--secondary button--small" type="button" data-chest-release hidden>Отвязать сундук</button>
+      </div>
+
+      <div class="notice" data-chest-none hidden>
+        <p><strong>Склад не привязан.</strong></p>
+        <p>
+          В игре посмотрите на сундук и наберите <span class="code-chip">/market chest</span>. После этого всё, что в нём лежит,
+          можно выкладывать отсюда — даже когда вы не в игре. Чужие такой сундук не откроют и не сломают, воронки из него ничего
+          не вытянут.
+        </p>
+      </div>
+
+      <div data-chest-body hidden>
+        <p class="market-note" data-chest-where></p>
+        <div class="chest" data-chest-grid aria-label="Содержимое склада" role="group"></div>
+
+        <div class="chest-form">
+          <h3 class="market-subhead">Что выкладываю</h3>
+          <div data-chest-chosen></div>
+
+          <h3 class="market-subhead">Каким лотом</h3>
+          <div class="chest-types" role="radiogroup" aria-label="Тип лота">
+            <label class="chest-type">
+              <input type="radio" name="chest-type" value="GIVEAWAY" data-chest-type="GIVEAWAY" checked />
+              <span>Раздача</span>
+            </label>
+            <label class="chest-type">
+              <input type="radio" name="chest-type" value="TRADE" data-chest-type="TRADE" />
+              <span>Обмен</span>
+            </label>
+            <label class="chest-type">
+              <input type="radio" name="chest-type" value="WANTED" data-chest-type="WANTED" />
+              <span>Заявка</span>
+            </label>
+            <label class="chest-type">
+              <input type="radio" name="chest-type" value="GIFT" data-chest-type="GIFT" />
+              <span>Подарок</span>
+            </label>
+          </div>
+          <p class="chest__hint" data-chest-type-hint>Отдаю просто так — кто первый, тот и забрал.</p>
+
+          <div data-chest-recipient-box hidden>
+            <label class="field">
+              <span class="field__label">Кому</span>
+              <input class="field__input" type="text" data-chest-recipient placeholder="Ник игрока" maxlength="16" autocomplete="off" />
+            </label>
+          </div>
+
+          <div data-chest-wishes hidden>
+            <h3 class="market-subhead">Что хочу взамен</h3>
+            <label class="field">
+              <span class="field__label">Поиск по каталогу</span>
+              <input class="field__input" type="search" data-chest-wish-search placeholder="алмаз, кирка, diamond…" autocomplete="off" />
+            </label>
+            <div class="chest-finds" data-chest-wish-results></div>
+            <div data-chest-wish-list></div>
+          </div>
+
+          <label class="field">
+            <span class="field__label">Подпись к лоту (необязательно)</span>
+            <input class="field__input" type="text" data-chest-note maxlength="200" autocomplete="off" />
+          </label>
+
+          <div class="chest-submit">
+            <button class="button button--primary" type="button" data-chest-submit disabled>Выложить лот</button>
+            <p class="form-message" data-chest-status hidden></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="section" aria-labelledby="market-mine-heading">
       <h2 id="market-mine-heading">Мои лоты и сделки</h2>
 
@@ -72,11 +146,12 @@ import Base from "../layouts/Base.astro";
 
     <section class="section">
       <div class="notice">
-        <p><strong>Выложить лот можно только в игре.</strong></p>
+        <p><strong>Из рук — в игре, со склада — отсюда.</strong></p>
         <p>
-          Предмет нужно держать в руках, поэтому начало всегда в Minecraft: <span class="code-chip">/market</span> открывает окно,
-          где вы отмечаете, что отдаёте, и выбираете в каталоге, что хотите взамен. Здесь, на сайте, удобно следить за доской и
-          отвечать на предложения.
+          То, что вы держите в руках, выкладывается в Minecraft: <span class="code-chip">/market</span> открывает окно, где вы
+          отмечаете, что отдаёте, и выбираете в каталоге, что хотите взамен. То, что лежит в привязанном сундуке, можно выложить
+          прямо здесь, не заходя на сервер. Забирать выигранное по-прежнему нужно в игре: <span class="code-chip">/market
+          deliveries</span>.
         </p>
       </div>
     </section>

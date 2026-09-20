@@ -78,6 +78,32 @@ export interface MarketMine {
   players: MarketPeople;
 }
 
+/** One occupied slot of a bound chest. The hash says which item it is, and is what is asked for by name. */
+export interface MarketChestSlot {
+  slot: number;
+  sha256: string;
+  amount: number;
+  summary: string;
+}
+
+/**
+ * A player's bound chest as the marketplace sees it.
+ *
+ * <p>`digest` is the fingerprint of the whole box. It travels back with anything built out of this picture, so a
+ * chest somebody rummaged in since the page was drawn is refused instead of half emptied.
+ */
+export interface MarketChest {
+  bound: boolean;
+  chestId: number;
+  kind: "SINGLE" | "DOUBLE";
+  size: number;
+  x: number;
+  y: number;
+  z: number;
+  digest: string;
+  slots: MarketChestSlot[];
+}
+
 export interface MarketTradeDetail extends MarketTrade {
   ownerItems: MarketItem[];
   buyerItems: MarketItem[];

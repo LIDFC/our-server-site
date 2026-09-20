@@ -943,6 +943,204 @@ kbd {
   font-size: var(--text-small);
 }
 
+/* склад: сетка слотов настоящего сундука, 9 в ряд, как в игре */
+.chest {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 4px;
+  max-width: 30rem;
+  margin: 1rem 0 1.5rem;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--ground-raised);
+}
+
+.chest__slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+
+.chest__slot:hover:not(:disabled) {
+  background: var(--panel-hover);
+  border-color: var(--line-strong);
+}
+
+.chest__slot--empty {
+  background: var(--ground);
+  cursor: default;
+}
+
+.chest__slot--picked {
+  border-color: var(--lamp);
+  background: var(--lamp-wash);
+}
+
+.chest__slot .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.chest__count {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  color: var(--ink-soft);
+  text-shadow: 0 1px 2px var(--ground);
+}
+
+.chest__hint {
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.chest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 34rem;
+}
+
+.chest-form .market-subhead {
+  margin: 1.25rem 0 0.5rem;
+}
+
+.chest-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chest-type {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+
+.chest-type:has(input:checked) {
+  border-color: var(--lamp);
+  background: var(--lamp-wash);
+}
+
+.chest-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chest-pick {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+}
+
+.chest-pick__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-small);
+}
+
+.chest-pick__amount {
+  width: 4.5rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--ground-raised);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+}
+
+.chest-pick__of {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+.chest-pick__drop {
+  padding: 0 0.4rem;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chest-pick__drop:hover {
+  color: var(--danger);
+}
+
+.chest-finds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0.5rem 0;
+}
+
+.chest-find {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.chest-find:hover {
+  background: var(--panel-hover);
+  border-color: var(--line-strong);
+}
+
+.chest-submit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 30rem) {
+  .chest {
+    gap: 3px;
+  }
+
+  .chest__slot .icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
 .lots {
   display: grid;
   gap: 1rem;

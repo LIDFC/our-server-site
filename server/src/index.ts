@@ -23,7 +23,7 @@ import { createAccountService, type PublicUser } from "./services/accounts.ts";
 import { createFileGalleryStore } from "./services/gallery.ts";
 import { createHistoryStore, startHistorySampler } from "./services/history.ts";
 import { createLauncherService } from "./services/launcher.ts";
-import { createMarketService, type TradeAction } from "./services/market.ts";
+import { createMarketService, type ChestListingRequest, type TradeAction } from "./services/market.ts";
 import { createMarketPeople } from "./services/marketPeople.ts";
 import { createMinecraftDirectory, normalizeUuid } from "./services/minecraft.ts";
 import { createSkinService } from "./services/skins.ts";
@@ -45,6 +45,64 @@ const MARKET_TYPES = new Set(["GIVEAWAY", "TRADE", "WANTED", "GIFT"]);
 const TRADE_ACTIONS = new Set<TradeAction>(["accept", "decline", "confirm"]);
 
 /** A query parameter that must be a whole number in range. Null means the request was wrong, not that it was absent. */
+/** How many lines a chest listing may carry, on each side. The plugin has the real limit; this stops nonsense. */
+const MAX_CHEST_LINES = 27;
+
+/** The slots a listing is to be built from, or null when the list is not what it claims to be. */
+function chestTakes(raw: unknown): { slot: number; sha256: string; amount: number }[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_CHEST_LINES) {
+    return null;
+  }
+  const takes: { slot: number; sha256: string; amount: number }[] = [];
+  const seen = new Set<number>();
+  for (const entry of raw) {
+    const line = entry as Record<string, unknown>;
+    const slot = line?.["slot"];
+    const sha256 = line?.["sha256"];
+    const amount = line?.["amount"];
+    if (typeof slot !== "number" || !Number.isInteger(slot) || slot < 0 || slot > 53) {
+      return null;
+    }
+    if (typeof sha256 !== "string" || !/^[0-9a-f]{64}$/.test(sha256)) {
+      return null;
+    }
+    if (typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0 || amount > 64) {
+      return null;
+    }
+    // two lines for one slot would make "how much is left" depend on the order they were applied
+    if (seen.has(slot)) {
+      return null;
+    }
+    seen.add(slot);
+    takes.push({ slot, sha256, amount });
+  }
+  return takes;
+}
+
+/** The other half of a listing: what is wanted in return, by item name. An empty wish list is allowed. */
+function chestWishes(raw: unknown): { material: string; amount: number }[] | null {
+  if (raw === undefined || raw === null) {
+    return [];
+  }
+  if (!Array.isArray(raw) || raw.length > MAX_CHEST_LINES) {
+    return null;
+  }
+  const wishes: { material: string; amount: number }[] = [];
+  for (const entry of raw) {
+    const line = entry as Record<string, unknown>;
+    const material = line?.["material"];
+    const amount = line?.["amount"];
+    if (typeof material !== "string" || !/^[a-z0-9_:]{1,64}$/.test(material)) {
+      return null;
+    }
+    if (typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0 || amount > 64) {
+      return null;
+    }
+    wishes.push({ material, amount });
+  }
+  return wishes;
+}
+
 function wholeNumber(raw: string | null, fallback: number, min: number, max: number): number | null {
   if (raw === null || raw === "") {
     return fallback;
@@ -118,7 +176,47 @@ export function createApp(config: Config) {
     return accounts.linkMinecraftUuid(user.id, fromServer) ? fromServer : null;
   };
 
-  /** Runs a marketplace action for the signed in player. The UUID is always the site's, never the browser's. */
+  /**
+   * Who is asking, for any marketplace action: the signed in player's Minecraft UUID, or null once this has already
+   * answered the request itself. The UUID is always the site's, never the browser's.
+   *
+   * <p>{@code validate} runs after the caller is known and before the rate limiter charges them, which is the only
+   * order that neither hands a stranger a lecture about the body they sent nor spends an allowance on nonsense.
+   */
+  const marketPlayer = async (
+    req: IncomingMessage,
+    res: ServerResponse,
+    validate?: () => string | null,
+  ): Promise<string | null> => {
+    if (!market.enabled) {
+      sendError(res, 503, "market-disabled", "The marketplace is not configured");
+      return null;
+    }
+    const user = accounts.current(sessionToken(req));
+    if (!user) {
+      sendError(res, 401, "unauthenticated", "Sign in first");
+      return null;
+    }
+    const complaint = validate ? validate() : null;
+    if (complaint !== null) {
+      sendError(res, 400, "invalid-body", complaint);
+      return null;
+    }
+    const attempt = marketLimiter.check(`user:${user.id}`);
+    if (!attempt.allowed) {
+      res.setHeader("Retry-After", String(attempt.retryAfterSeconds));
+      sendError(res, 429, "rate-limited", "Too many marketplace actions, try again later");
+      return null;
+    }
+    const uuid = await minecraftUuidFor(user);
+    if (!uuid) {
+      sendError(res, 409, "minecraft-not-linked", "Log in to the Minecraft server once so the account can be linked");
+      return null;
+    }
+    return uuid;
+  };
+
+  /** Runs a marketplace action that is about one listing or one trade. */
   const marketAction = async (
     req: IncomingMessage,
     res: ServerResponse,
@@ -126,31 +224,12 @@ export function createApp(config: Config) {
     field: string,
     run: (uuid: string, id: number) => Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; status: number; error: string; message: string }>,
   ): Promise<void> => {
-    if (!market.enabled) {
-      sendError(res, 503, "market-disabled", "The marketplace is not configured");
-      return;
-    }
-    const user = accounts.current(sessionToken(req));
-    if (!user) {
-      sendError(res, 401, "unauthenticated", "Sign in first");
-      return;
-    }
-    if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
-      sendError(res, 400, "invalid-body", `${field} must be a positive whole number`);
-      return;
-    }
-    const attempt = marketLimiter.check(`user:${user.id}`);
-    if (!attempt.allowed) {
-      res.setHeader("Retry-After", String(attempt.retryAfterSeconds));
-      sendError(res, 429, "rate-limited", "Too many marketplace actions, try again later");
-      return;
-    }
-    const uuid = await minecraftUuidFor(user);
+    const uuid = await marketPlayer(req, res, () =>
+      typeof id === "number" && Number.isSafeInteger(id) && id > 0 ? null : `${field} must be a positive whole number`);
     if (!uuid) {
-      sendError(res, 409, "minecraft-not-linked", "Log in to the Minecraft server once so the account can be linked");
       return;
     }
-    const result = await run(uuid, id);
+    const result = await run(uuid, id as number);
     if (!result.ok) {
       sendError(res, result.status, result.error, result.message);
       return;
@@ -282,6 +361,29 @@ export function createApp(config: Config) {
           players,
         },
       };
+    },
+
+    /**
+     * What is in the player's bound chest.
+     *
+     * <p>Answered on its own rather than folded into /api/market/mine. That answer is drawn on every visit to the
+     * section and may be a moment stale; this one reaches into the world, can refuse while the marketplace is still
+     * checking a chest after a restart, and carries the fingerprint the next request is measured against. Mixing the
+     * two would make the whole page fail on a day when one chunk was not loaded.
+     */
+    "/api/market/chest": async (_url, user) => {
+      if (!market.enabled) {
+        return { status: 503, body: { error: "market-disabled", message: "The marketplace is not configured" } };
+      }
+      const uuid = await minecraftUuidFor(user);
+      if (!uuid) {
+        return { status: 200, body: { linked: false, bound: false, slots: [] } };
+      }
+      const chest = await market.chestOf(uuid);
+      if (!chest.ok) {
+        return { status: chest.status, body: { error: chest.error, message: chest.message } };
+      }
+      return { body: { linked: true, ...chest.value } };
     },
 
     /**
@@ -461,6 +563,63 @@ export function createApp(config: Config) {
         return;
       }
       await marketAction(req, res, body["tradeId"], "tradeId", (uuid, id) => market.trade(uuid, id, action as TradeAction));
+    },
+
+    /**
+     * Puts up a listing out of the bound chest.
+     *
+     * <p>The body is checked here so the browser gets a clear answer instead of a relayed refusal, and checked again
+     * by the plugin, which is the only thing allowed to actually move an item. The player's UUID is never read from
+     * the body: it comes from the session, like everywhere else.
+     */
+    "/api/market/chest/listing": async (req, res, body) => {
+      let request: ChestListingRequest | null = null;
+      const uuid = await marketPlayer(req, res, () => {
+        const type = body["type"];
+        if (typeof type !== "string" || !MARKET_TYPES.has(type)) {
+          return `type must be one of ${[...MARKET_TYPES].join(", ")}`;
+        }
+        const digest = body["chestDigest"];
+        if (typeof digest !== "string" || !/^[0-9a-f]{64}$/.test(digest)) {
+          return "chestDigest must be the fingerprint the chest was read with";
+        }
+        const take = chestTakes(body["take"]);
+        if (take === null) {
+          return "take must be a list of slots, each with the item that is in it and how many";
+        }
+        const wanted = chestWishes(body["wanted"]);
+        if (wanted === null) {
+          return "wanted must be a list of items with their amount";
+        }
+        const note = typeof body["note"] === "string" && body["note"].trim() !== "" ? body["note"].trim().slice(0, 200) : null;
+        const recipient = body["recipientName"];
+        const recipientName = typeof recipient === "string" && recipient.trim() !== "" ? recipient.trim().slice(0, 32) : null;
+        request = { type: type as ChestListingRequest["type"], chestDigest: digest, note, recipientName, take, wanted };
+        return null;
+      });
+      if (!uuid || request === null) {
+        return;
+      }
+      const result = await market.listFromChest(uuid, request);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      sendJson(res, 200, result.value);
+    },
+
+    /** Lets the chest go. Binding one stays a command in the game, because it means pointing at a block. */
+    "/api/market/chest/release": async (req, res) => {
+      const uuid = await marketPlayer(req, res);
+      if (!uuid) {
+        return;
+      }
+      const result = await market.releaseChest(uuid);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      sendJson(res, 200, result.value);
     },
 
     /**

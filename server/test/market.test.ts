@@ -14,6 +14,9 @@ const INVITE = "our-server-2026";
 const MARKET_TOKEN = "market-token-for-the-site-at-least-24";
 const LEV_UUID = "11111111-2222-3333-4444-555555555555";
 const MASHA_UUID = "66666666-7777-8888-9999-aaaaaaaaaaaa";
+const CHEST_DIGEST = "a".repeat(64);
+const DIAMOND_HASH = "b".repeat(64);
+const GOLD_HASH = "c".repeat(64);
 
 interface Call {
   method: string;
@@ -106,6 +109,26 @@ function fakePlugin(): { server: Server; calls: Call[]; fail: (code: string | nu
           ownerItems: [{ summary: "16x diamond", amount: 16 }],
           buyerItems: [{ summary: "32x gold ingot", amount: 32 }],
         });
+      } else if (url.endsWith("/chest/release")) {
+        send(200, { ok: true });
+      } else if (url.endsWith("/chest")) {
+        send(200, {
+          bound: true,
+          chestId: 1,
+          kind: "DOUBLE",
+          size: 54,
+          world: "c0ffee00-0000-0000-0000-000000000000",
+          x: -939,
+          y: 65,
+          z: 759,
+          digest: CHEST_DIGEST,
+          slots: [
+            { slot: 0, sha256: DIAMOND_HASH, amount: 64, summary: "64x diamond" },
+            { slot: 4, sha256: GOLD_HASH, amount: 10, summary: "10x gold ingot" },
+          ],
+        });
+      } else if (url === "/listings/from-chest") {
+        send(200, { ok: true, listingId: 31 });
       } else if (url.endsWith("/cancel")) {
         send(200, { ok: true, listingId: 12 });
       } else if (url.includes("/trades/")) {
@@ -283,6 +306,121 @@ describe("marketplace section", () => {
       assert.equal(response.status, 200);
       assert.equal(plugin.calls.find((entry) => entry.method === "POST")?.path, `/trades/4/${action}`);
     }
+  });
+
+  it("shows the bound chest, asking the marketplace about the account's own player", async () => {
+    plugin.calls.length = 0;
+    const response = await get("/api/market/chest", lev);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { linked: boolean; bound: boolean; digest: string; slots: { slot: number }[] };
+    assert.equal(body.linked, true);
+    assert.equal(body.bound, true);
+    assert.equal(body.digest, CHEST_DIGEST);
+    assert.deepEqual(
+      body.slots.map((slot) => slot.slot),
+      [0, 4],
+    );
+    assert.equal(plugin.calls.at(-1)?.path, `/players/${LEV_UUID}/chest`);
+  });
+
+  it("tells an unlinked account it has no chest instead of failing", async () => {
+    const response = await get("/api/market/chest", stranger);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { linked: boolean; bound: boolean };
+    assert.equal(body.linked, false);
+    assert.equal(body.bound, false);
+  });
+
+  it("puts up a listing out of the chest with the account's own UUID", async () => {
+    plugin.calls.length = 0;
+    const response = await post(
+      "/api/market/chest/listing",
+      {
+        minecraftUuid: MASHA_UUID,
+        type: "TRADE",
+        chestDigest: CHEST_DIGEST,
+        note: "   ",
+        take: [{ slot: 0, sha256: DIAMOND_HASH, amount: 16 }],
+        wanted: [{ material: "gold_ingot", amount: 32 }],
+      },
+      lev,
+    );
+    assert.equal(response.status, 200);
+    const call = plugin.calls.find((entry) => entry.method === "POST");
+    assert.equal(call?.path, "/listings/from-chest");
+    assert.equal(call?.body?.["minecraftUuid"], LEV_UUID, "the UUID in the body was ignored");
+    assert.equal(call?.body?.["chestDigest"], CHEST_DIGEST);
+    assert.equal(call?.body?.["note"], null, "a note of nothing but spaces is no note");
+    assert.deepEqual(call?.body?.["take"], [{ slot: 0, sha256: DIAMOND_HASH, amount: 16 }]);
+  });
+
+  it("repeats itself under the same idempotency key, so a double click cannot list twice", async () => {
+    plugin.calls.length = 0;
+    const body = {
+      type: "GIVEAWAY",
+      chestDigest: CHEST_DIGEST,
+      take: [{ slot: 4, sha256: GOLD_HASH, amount: 10 }],
+    };
+    await post("/api/market/chest/listing", body, lev);
+    await post("/api/market/chest/listing", body, lev);
+    const keys = plugin.calls.filter((entry) => entry.method === "POST").map((entry) => entry.idempotencyKey);
+    assert.equal(keys.length, 2);
+    assert.equal(keys[0], keys[1], "the key is built from the fingerprint of the chest, not from chance");
+  });
+
+  it("refuses a request that does not say what it claims to, before the marketplace hears of it", async () => {
+    plugin.calls.length = 0;
+    const good = { type: "GIVEAWAY", chestDigest: CHEST_DIGEST, take: [{ slot: 0, sha256: DIAMOND_HASH, amount: 1 }] };
+    const broken: Record<string, unknown>[] = [
+      { ...good, type: "SOMETHING" },
+      { ...good, chestDigest: "short" },
+      { ...good, take: [] },
+      { ...good, take: [{ slot: 0, sha256: "not a hash", amount: 1 }] },
+      { ...good, take: [{ slot: 0, sha256: DIAMOND_HASH, amount: 0 }] },
+      { ...good, take: [{ slot: -1, sha256: DIAMOND_HASH, amount: 1 }] },
+      {
+        ...good,
+        take: [
+          { slot: 0, sha256: DIAMOND_HASH, amount: 1 },
+          { slot: 0, sha256: DIAMOND_HASH, amount: 1 },
+        ],
+      },
+      { ...good, wanted: [{ material: "Gold Ingot", amount: 1 }] },
+      { ...good, wanted: [{ material: "gold_ingot", amount: 65 }] },
+    ];
+    for (const body of broken) {
+      const response = await post("/api/market/chest/listing", body, lev);
+      assert.equal(response.status, 400, JSON.stringify(body));
+    }
+    assert.equal(plugin.calls.length, 0, "nothing reached the marketplace");
+  });
+
+  it("needs a signed in account with a linked player", async () => {
+    assert.equal((await post("/api/market/chest/listing", { type: "GIVEAWAY" })).status, 401);
+    assert.equal((await post("/api/market/chest/release", {})).status, 401);
+    assert.equal((await post("/api/market/chest/release", {}, stranger)).status, 409);
+  });
+
+  it("carries a chest refusal through with the marketplace's own reason", async () => {
+    plugin.fail("CHEST_CHANGED");
+    const response = await post(
+      "/api/market/chest/listing",
+      { type: "GIVEAWAY", chestDigest: CHEST_DIGEST, take: [{ slot: 0, sha256: DIAMOND_HASH, amount: 1 }] },
+      lev,
+    );
+    assert.equal(response.status, 409);
+    assert.equal(((await response.json()) as { error: string }).error, "chest-changed");
+
+    plugin.fail("CHEST_LOCKED");
+    assert.equal(((await (await get("/api/market/chest", lev)).json()) as { error: string }).error, "chest-locked");
+    plugin.fail(null);
+  });
+
+  it("lets the chest go", async () => {
+    plugin.calls.length = 0;
+    const response = await post("/api/market/chest/release", {}, lev);
+    assert.equal(response.status, 200);
+    assert.equal(plugin.calls.find((entry) => entry.method === "POST")?.path, `/players/${LEV_UUID}/chest/release`);
   });
 
   it("reads a parcel out of the field the plugin actually sends", async () => {
