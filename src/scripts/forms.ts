@@ -56,6 +56,7 @@ const MESSAGES: Record<string, string> = {
   "listing-not-active": "Лот уже не активен",
   "trade-not-accepted": "Сделку ещё не приняли",
   "player-not-found": "Такого игрока рынок не знает",
+  "own-listing": "Это ваш собственный лот",
   "market-outdated": "На сервере стоит плагин прошлой версии, эта возможность там ещё не появилась",
   "empty-listing": "Выберите хотя бы одну вещь",
   "too-many-items": "Слишком много стопок в одном лоте",

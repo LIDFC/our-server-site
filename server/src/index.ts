@@ -23,7 +23,7 @@ import { createAccountService, type PublicUser } from "./services/accounts.ts";
 import { createFileGalleryStore } from "./services/gallery.ts";
 import { createHistoryStore, startHistorySampler } from "./services/history.ts";
 import { createLauncherService } from "./services/launcher.ts";
-import { createMarketService, type ChestListingRequest, type TradeAction } from "./services/market.ts";
+import { createMarketService, type ChestListingRequest, type ChestOfferRequest, type TradeAction } from "./services/market.ts";
 import { createMarketPeople } from "./services/marketPeople.ts";
 import { createMinecraftDirectory, normalizeUuid } from "./services/minecraft.ts";
 import { createSkinService } from "./services/skins.ts";
@@ -554,6 +554,46 @@ export function createApp(config: Config) {
      */
     "/api/market/listings/cancel": async (req, res, body) => {
       await marketAction(req, res, body["listingId"], "listingId", (uuid, id) => market.cancelListing(uuid, id));
+    },
+
+    /** Takes a giveaway or a gift. The items go to the queue and are collected in the game, as always. */
+    "/api/market/listings/take": async (req, res, body) => {
+      await marketAction(req, res, body["listingId"], "listingId", (uuid, id) => market.takeListing(uuid, id));
+    },
+
+    /**
+     * Answers somebody else's listing with items out of your own chest.
+     *
+     * <p>Same shape as putting a listing up from the chest, and the same reason for the fingerprint: it is what the
+     * page last saw the whole chest as, and the plugin refuses if the owner has moved anything since.
+     */
+    "/api/market/chest/offer": async (req, res, body) => {
+      let request: ChestOfferRequest | null = null;
+      const uuid = await marketPlayer(req, res, () => {
+        const listingId = body["listingId"];
+        if (typeof listingId !== "number" || !Number.isSafeInteger(listingId) || listingId <= 0) {
+          return "listingId must be a positive whole number";
+        }
+        const digest = body["chestDigest"];
+        if (typeof digest !== "string" || !/^[0-9a-f]{64}$/.test(digest)) {
+          return "chestDigest must be the fingerprint the chest was read with";
+        }
+        const take = chestTakes(body["take"]);
+        if (take === null) {
+          return "take must be a list of slots, each with the item that is in it and how many";
+        }
+        request = { listingId, chestDigest: digest, take };
+        return null;
+      });
+      if (!uuid || request === null) {
+        return;
+      }
+      const result = await market.offerFromChest(uuid, request);
+      if (!result.ok) {
+        sendError(res, result.status, result.error, result.message);
+        return;
+      }
+      sendJson(res, 200, result.value);
     },
 
     "/api/market/trades/action": async (req, res, body) => {

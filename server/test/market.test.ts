@@ -109,6 +109,10 @@ function fakePlugin(): { server: Server; calls: Call[]; fail: (code: string | nu
           ownerItems: [{ summary: "16x diamond", amount: 16 }],
           buyerItems: [{ summary: "32x gold ingot", amount: 32 }],
         });
+      } else if (url.endsWith("/take")) {
+        send(200, { ok: true, listingId: 12 });
+      } else if (url.endsWith("/offer-from-chest")) {
+        send(200, { ok: true, listingId: 12, tradeId: 77 });
       } else if (url.endsWith("/chest/release")) {
         send(200, { ok: true });
       } else if (url.endsWith("/chest")) {
@@ -306,6 +310,56 @@ describe("marketplace section", () => {
       assert.equal(response.status, 200);
       assert.equal(plugin.calls.find((entry) => entry.method === "POST")?.path, `/trades/4/${action}`);
     }
+  });
+
+  it("takes a free lot for the signed in player", async () => {
+    plugin.calls.length = 0;
+    const response = await post("/api/market/listings/take", { listingId: 12, minecraftUuid: MASHA_UUID }, lev);
+    assert.equal(response.status, 200);
+    const call = plugin.calls.find((entry) => entry.method === "POST");
+    assert.equal(call?.path, "/listings/12/take");
+    assert.equal(call?.body?.["minecraftUuid"], LEV_UUID, "the UUID in the body was ignored");
+  });
+
+  it("answers a lot with items out of the chest", async () => {
+    plugin.calls.length = 0;
+    const response = await post(
+      "/api/market/chest/offer",
+      { listingId: 12, chestDigest: CHEST_DIGEST, take: [{ slot: 4, sha256: GOLD_HASH, amount: 8 }] },
+      lev,
+    );
+    assert.equal(response.status, 200);
+    const call = plugin.calls.find((entry) => entry.method === "POST");
+    assert.equal(call?.path, "/listings/12/offer-from-chest");
+    assert.equal(call?.body?.["minecraftUuid"], LEV_UUID);
+    assert.deepEqual(call?.body?.["take"], [{ slot: 4, sha256: GOLD_HASH, amount: 8 }]);
+    assert.equal(((await response.json()) as { tradeId: number }).tradeId, 77);
+  });
+
+  it("checks an offer before the marketplace hears of it", async () => {
+    plugin.calls.length = 0;
+    const good = { listingId: 12, chestDigest: CHEST_DIGEST, take: [{ slot: 4, sha256: GOLD_HASH, amount: 8 }] };
+    for (const body of [
+      { ...good, listingId: 0 },
+      { ...good, chestDigest: "short" },
+      { ...good, take: [] },
+      { ...good, take: [{ slot: 4, sha256: "nope", amount: 8 }] },
+    ]) {
+      assert.equal((await post("/api/market/chest/offer", body, lev)).status, 400, JSON.stringify(body));
+    }
+    assert.equal(plugin.calls.length, 0, "nothing reached the marketplace");
+  });
+
+  it("carries the refusal of an offer through", async () => {
+    plugin.fail("OWN_LISTING");
+    const response = await post(
+      "/api/market/chest/offer",
+      { listingId: 12, chestDigest: CHEST_DIGEST, take: [{ slot: 4, sha256: GOLD_HASH, amount: 1 }] },
+      lev,
+    );
+    assert.equal(response.status, 409);
+    assert.equal(((await response.json()) as { error: string }).error, "own-listing");
+    plugin.fail(null);
   });
 
   it("shows the bound chest, asking the marketplace about the account's own player", async () => {

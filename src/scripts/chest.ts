@@ -7,15 +7,15 @@ import { parseItem } from "./items";
 /**
  * The bound chest, on the website.
  *
- * <p>This is the only place on the site where a player can put something up for trade, and it works while they are
- * offline — which is the whole point of binding a chest in the first place. Everything shown here is a picture of a
- * real box in the world: the items are not held by the marketplace and are not held by the site, they are lying in a
- * chest, and the fingerprint that came with them is what makes it safe to act on a picture that may already be out
- * of date.
+ * <p>This is the only place on the site where a player can put something up for trade or answer somebody else's
+ * listing, and it works while they are offline — which is the whole point of binding a chest in the first place.
+ * Everything shown here is a picture of a real box in the world: the items are not held by the marketplace and are
+ * not held by the site, they are lying in a chest, and the fingerprint that came with them is what makes it safe to
+ * act on a picture that may already be out of date.
  *
  * <p>Nothing here refreshes on a timer. A list that redraws itself every twenty seconds would throw away a selection
- * the player is halfway through making; instead the chest is read when the section opens and after every action, and
- * if the world moved underneath it the marketplace refuses and says so, which is the honest answer.
+ * the player is halfway through making; instead the chest is read when it is shown and after every action, and if the
+ * world moved underneath it the marketplace refuses and says so, which is the honest answer.
  */
 
 const MAX_STACKS = 27;
@@ -23,12 +23,20 @@ const RESULTS = 12;
 
 type ListingType = "GIVEAWAY" | "TRADE" | "WANTED" | "GIFT";
 
-const TYPE_LABELS: { value: ListingType; text: string; hint: string }[] = [
-  { value: "GIVEAWAY", text: "Раздача", hint: "Отдаю просто так — кто первый, тот и забрал." },
-  { value: "TRADE", text: "Обмен", hint: "Отдаю это и хочу кое-что взамен." },
-  { value: "WANTED", text: "Заявка", hint: "Ищу вещь, а это предлагаю за неё." },
-  { value: "GIFT", text: "Подарок", hint: "Лично для одного игрока, другим не видно." },
+const TYPE_HINTS: { value: ListingType; hint: string }[] = [
+  { value: "GIVEAWAY", hint: "Отдаю просто так — кто первый, тот и забрал." },
+  { value: "TRADE", hint: "Отдаю это и хочу кое-что взамен." },
+  { value: "WANTED", hint: "Ищу вещь, а это предлагаю за неё." },
+  { value: "GIFT", hint: "Лично для одного игрока, другим не видно." },
 ];
+
+type ChestAnswer = MarketChest & { linked: boolean };
+
+export interface ChestPick {
+  slot: number;
+  sha256: string;
+  amount: number;
+}
 
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -64,49 +72,40 @@ function show(node: Element | null, visible: boolean): void {
   }
 }
 
-export interface ChestSection {
-  /** Reads the chest again. Called when the section first appears and after anything has been put up. */
-  refresh(): Promise<void>;
+export function chestWhere(chest: MarketChest): string {
+  const box = chest.kind === "DOUBLE" ? "большой сундук" : "сундук";
+  const slots = plural(chest.size, "слот", "слота", "слотов");
+  return `Ваш ${box} на ${chest.size} ${slots}, координаты ${chest.x}, ${chest.y}, ${chest.z}.`;
 }
 
-export function setupChest(page: HTMLElement, onListed: () => void): ChestSection {
-  const find = (selector: string): HTMLElement | null => page.querySelector<HTMLElement>(selector);
+// the picker ------------------------------------------------------------------------------------------------------
 
-  const section = find("[data-chest]");
-  const grid = find("[data-chest-grid]");
-  const chosen = find("[data-chest-chosen]");
-  const wishBox = find("[data-chest-wishes]");
-  const wishList = find("[data-chest-wish-list]");
-  const wishResults = find("[data-chest-wish-results]");
-  const wishSearch = page.querySelector<HTMLInputElement>("[data-chest-wish-search]");
-  const noteInput = page.querySelector<HTMLInputElement>("[data-chest-note]");
-  const recipientBox = find("[data-chest-recipient-box]");
-  const recipientInput = page.querySelector<HTMLInputElement>("[data-chest-recipient]");
-  const submit = page.querySelector<HTMLButtonElement>("[data-chest-submit]");
-  const release = page.querySelector<HTMLButtonElement>("[data-chest-release]");
-  const status = find("[data-chest-status]");
-  const where = find("[data-chest-where]");
+export interface ChestPicker {
+  /** Reads the chest again and redraws. Null means it could not be read at all. */
+  reload(): Promise<ChestAnswer | null>;
+  chest(): MarketChest | null;
+  picks(): ChestPick[];
+  count(): number;
+  clear(): void;
+}
 
+/**
+ * A chest drawn as the grid of slots it really is, with the stacks somebody has picked out of it.
+ *
+ * <p>The same picker serves the section on the page and the panel inside a listing sheet. They ask different things
+ * of it — put this up, offer this in return — but the half that matters is identical: which slot, what is supposed
+ * to be in it, and how many, measured against the fingerprint the whole box came with.
+ */
+export function createPicker(grid: HTMLElement, chosen: HTMLElement, onChange: () => void, hint: string): ChestPicker {
   let chest: MarketChest | null = null;
-  let type: ListingType = "GIVEAWAY";
-  /** slot number to how many of that stack goes into the listing */
+  /** slot number to how many of that stack is being offered */
   const picked = new Map<number, number>();
-  /** item id to how many are wanted in return */
-  const wishes = new Map<string, number>();
-  let busy = false;
-
-  const say = (text: string, kind: "error" | "success" | "quiet"): void => {
-    if (status) {
-      status.textContent = text;
-      status.dataset["kind"] = kind;
-      status.hidden = text === "";
-    }
-  };
 
   const slotOf = (slot: number): MarketChestSlot | undefined => chest?.slots.find((entry) => entry.slot === slot);
 
   function drawGrid(): void {
-    if (!grid || !chest) {
+    if (!chest) {
+      grid.replaceChildren();
       return;
     }
     const cells: HTMLElement[] = [];
@@ -144,26 +143,18 @@ export function setupChest(page: HTMLElement, onListed: () => void): ChestSectio
     }
     if (picked.has(slot)) {
       picked.delete(slot);
-    } else {
-      if (picked.size >= MAX_STACKS) {
-        say(`В одном лоте не больше ${MAX_STACKS} стопок`, "error");
-        return;
-      }
+    } else if (picked.size < MAX_STACKS) {
       picked.set(slot, filled.amount);
-      say("", "quiet");
     }
     drawGrid();
     drawChosen();
-    updateSubmit();
+    onChange();
   }
 
-  /** The chosen stacks, each with how many of it to put up. A player rarely wants the whole stack. */
+  /** The chosen stacks, each with how many of it to hand over. A player rarely wants to give the whole stack. */
   function drawChosen(): void {
-    if (!chosen) {
-      return;
-    }
     if (picked.size === 0) {
-      chosen.replaceChildren(element("p", "chest__hint", "Выберите в сундуке то, что выкладываете."));
+      chosen.replaceChildren(element("p", "chest__hint", hint));
       return;
     }
     const rows = [...picked.entries()]
@@ -173,7 +164,6 @@ export function setupChest(page: HTMLElement, onListed: () => void): ChestSectio
         const item = parseItem(filled?.summary ?? "");
         const shown = item.label;
         const row = element("li", "chest-pick");
-        const name = element("span", "chest-pick__name", shown);
 
         const count = document.createElement("input");
         count.type = "number";
@@ -181,26 +171,199 @@ export function setupChest(page: HTMLElement, onListed: () => void): ChestSectio
         count.min = "1";
         count.max = String(filled?.amount ?? amount);
         count.value = String(amount);
-        count.setAttribute("aria-label", `Сколько ${shown} выложить`);
+        count.setAttribute("aria-label", `Сколько ${shown}`);
         count.addEventListener("change", () => {
           const most = filled?.amount ?? amount;
           const wanted = Math.min(Math.max(1, Math.round(Number(count.value) || 1)), most);
           count.value = String(wanted);
           picked.set(slot, wanted);
+          onChange();
         });
 
         const drop = element("button", "chest-pick__drop", "×");
         drop.type = "button";
-        drop.setAttribute("aria-label", `Убрать ${shown} из лота`);
+        drop.setAttribute("aria-label", `Убрать ${shown}`);
         drop.addEventListener("click", () => toggle(slot));
 
-        row.append(icon(item.id, shown), name, count, element("span", "chest-pick__of", `из ${filled?.amount ?? amount}`), drop);
+        row.append(
+          icon(item.id, shown),
+          element("span", "chest-pick__name", shown),
+          count,
+          element("span", "chest-pick__of", `из ${filled?.amount ?? amount}`),
+          drop,
+        );
         return row;
       });
     const list = element("ul", "chest-picks");
     list.append(...rows);
     chosen.replaceChildren(list);
   }
+
+  return {
+    async reload() {
+      let answer: ChestAnswer;
+      try {
+        answer = await getJson<ChestAnswer>("/api/market/chest");
+      } catch {
+        chest = null;
+        return null;
+      }
+      chest = answer.linked && answer.bound ? answer : null;
+      // a stale pick would ask for a slot that now holds something else; the marketplace would refuse it anyway
+      for (const slot of [...picked.keys()]) {
+        const still = slotOf(slot);
+        if (!still) {
+          picked.delete(slot);
+        } else {
+          picked.set(slot, Math.min(picked.get(slot) ?? still.amount, still.amount));
+        }
+      }
+      drawGrid();
+      drawChosen();
+      return answer;
+    },
+    chest: () => chest,
+    picks: () =>
+      [...picked.entries()]
+        .sort((left, right) => left[0] - right[0])
+        .map(([slot, amount]) => ({ slot, sha256: slotOf(slot)?.sha256 ?? "", amount })),
+    count: () => picked.size,
+    clear() {
+      picked.clear();
+      drawGrid();
+      drawChosen();
+    },
+  };
+}
+
+// answering somebody else's listing ---------------------------------------------------------------------------------
+
+/**
+ * The panel inside a listing sheet: pick out of your chest and offer it.
+ *
+ * <p>It reads the chest itself rather than borrowing the section's copy. The two are opened at different moments and
+ * the fingerprint is only good for the moment it was taken, so sharing one would mean offering against a picture
+ * somebody took minutes ago.
+ */
+export function offerPanel(listingId: number, onOffered: () => void): HTMLElement {
+  const panel = element("div", "chest-offer");
+  const title = element("h3", "sheet__subhead", "Предложить из своего склада");
+  const grid = element("div", "chest");
+  grid.setAttribute("role", "group");
+  grid.setAttribute("aria-label", "Содержимое склада");
+  const chosen = element("div");
+  const actions = element("div", "sheet__actions");
+  const offer = element("button", "button button--primary button--small", "Предложить обмен");
+  offer.type = "button";
+  offer.disabled = true;
+  const status = element("p", "sheet__note");
+  status.hidden = true;
+  actions.append(offer);
+
+  const picker = createPicker(grid, chosen, () => update(), "Отметьте в складе то, что предлагаете.");
+  let busy = false;
+
+  const say = (text: string): void => {
+    status.textContent = text;
+    status.hidden = text === "";
+  };
+
+  function update(): void {
+    offer.disabled = busy || picker.count() === 0;
+  }
+
+  offer.addEventListener("click", () => {
+    void (async () => {
+      const chest = picker.chest();
+      if (!chest || busy || picker.count() === 0) {
+        return;
+      }
+      busy = true;
+      update();
+      say("Отправляем…");
+      const answer = await postJson<{ tradeId: number }>("/api/market/chest/offer", {
+        listingId,
+        chestDigest: chest.digest,
+        take: picker.picks(),
+      });
+      busy = false;
+      if (answer.ok) {
+        picker.clear();
+        say("Предложение отправлено. Ждём ответа автора лота.");
+        onOffered();
+        return;
+      }
+      if (answer.error === "chest-changed" || answer.error === "chest-missing") {
+        picker.clear();
+        await picker.reload();
+      }
+      say(messageFor(answer.error));
+      update();
+    })();
+  });
+
+  panel.append(title, grid, chosen, actions, status);
+
+  void picker.reload().then((answer) => {
+    if (!answer || !answer.linked) {
+      panel.replaceChildren(element("p", "sheet__note", "Войдите в аккаунт, чтобы предлагать обмен отсюда."));
+      return;
+    }
+    if (!answer.bound) {
+      panel.replaceChildren(
+        element("p", "sheet__note", "Чтобы обмениваться прямо здесь, привяжите сундук: посмотрите на него в игре и наберите /market chest."),
+      );
+      return;
+    }
+    update();
+  });
+
+  return panel;
+}
+
+// the section on the page -------------------------------------------------------------------------------------------
+
+export interface ChestSection {
+  /** Reads the chest again. Called when the section first appears and after anything has been put up. */
+  refresh(): Promise<void>;
+}
+
+export function setupChest(page: HTMLElement, onListed: () => void): ChestSection {
+  const find = (selector: string): HTMLElement | null => page.querySelector<HTMLElement>(selector);
+
+  const section = find("[data-chest]");
+  const grid = find("[data-chest-grid]");
+  const chosen = find("[data-chest-chosen]");
+  const wishBox = find("[data-chest-wishes]");
+  const wishList = find("[data-chest-wish-list]");
+  const wishResults = find("[data-chest-wish-results]");
+  const wishSearch = page.querySelector<HTMLInputElement>("[data-chest-wish-search]");
+  const noteInput = page.querySelector<HTMLInputElement>("[data-chest-note]");
+  const recipientBox = find("[data-chest-recipient-box]");
+  const recipientInput = page.querySelector<HTMLInputElement>("[data-chest-recipient]");
+  const submit = page.querySelector<HTMLButtonElement>("[data-chest-submit]");
+  const release = page.querySelector<HTMLButtonElement>("[data-chest-release]");
+  const status = find("[data-chest-status]");
+  const where = find("[data-chest-where]");
+
+  if (!grid || !chosen) {
+    return { refresh: async () => undefined };
+  }
+
+  let type: ListingType = "GIVEAWAY";
+  /** item id to how many are wanted in return */
+  const wishes = new Map<string, number>();
+  let busy = false;
+
+  const say = (text: string, kind: "error" | "success" | "quiet"): void => {
+    if (status) {
+      status.textContent = text;
+      status.dataset["kind"] = kind;
+      status.hidden = text === "";
+    }
+  };
+
+  const picker = createPicker(grid, chosen, () => updateSubmit(), "Выберите в сундуке то, что выкладываете.");
 
   // what is wanted in return ---------------------------------------------------------------------------------------
 
@@ -272,39 +435,38 @@ export function setupChest(page: HTMLElement, onListed: () => void): ChestSectio
 
   function updateSubmit(): void {
     if (submit) {
-      submit.disabled = busy || picked.size === 0;
+      submit.disabled = busy || picker.count() === 0;
     }
     show(wishBox, type === "TRADE" || type === "WANTED");
     show(recipientBox, type === "GIFT");
   }
 
   async function putUp(): Promise<void> {
-    if (!chest || picked.size === 0 || busy) {
+    const chest = picker.chest();
+    if (!chest || picker.count() === 0 || busy) {
       return;
     }
     busy = true;
     updateSubmit();
     say("Выкладываем…", "quiet");
 
-    const take = [...picked.entries()]
-      .sort((left, right) => left[0] - right[0])
-      .map(([slot, amount]) => ({ slot, sha256: slotOf(slot)?.sha256 ?? "", amount }));
-    const wanted = type === "TRADE" || type === "WANTED"
-      ? [...wishes.entries()].map(([material, amount]) => ({ material, amount }))
-      : [];
+    const wanted =
+      type === "TRADE" || type === "WANTED"
+        ? [...wishes.entries()].map(([material, amount]) => ({ material, amount }))
+        : [];
 
     const answer = await postJson<{ listingId: number }>("/api/market/chest/listing", {
       type,
       chestDigest: chest.digest,
       note: noteInput?.value ?? null,
       recipientName: type === "GIFT" ? (recipientInput?.value ?? null) : null,
-      take,
+      take: picker.picks(),
       wanted,
     });
 
     busy = false;
     if (answer.ok) {
-      picked.clear();
+      picker.clear();
       wishes.clear();
       if (noteInput) {
         noteInput.value = "";
@@ -316,7 +478,7 @@ export function setupChest(page: HTMLElement, onListed: () => void): ChestSectio
     }
     // the chest moved under us: the picture is stale, so replace it rather than let them try the same thing again
     if (answer.error === "chest-changed" || answer.error === "chest-missing") {
-      picked.clear();
+      picker.clear();
       await refresh();
     }
     say(messageFor(answer.error), "error");
@@ -334,16 +496,14 @@ export function setupChest(page: HTMLElement, onListed: () => void): ChestSectio
       say(messageFor(answer.error), "error");
       return;
     }
-    picked.clear();
+    picker.clear();
     say("Сундук отвязан.", "success");
     await refresh();
   }
 
   async function refresh(): Promise<void> {
-    let answer: MarketChest & { linked: boolean };
-    try {
-      answer = await getJson<MarketChest & { linked: boolean }>("/api/market/chest");
-    } catch {
+    const answer = await picker.reload();
+    if (!answer) {
       show(section, false);
       return;
     }
@@ -351,35 +511,22 @@ export function setupChest(page: HTMLElement, onListed: () => void): ChestSectio
     if (!answer.linked) {
       return;
     }
-    chest = answer.bound ? answer : null;
     show(find("[data-chest-none]"), !answer.bound);
     show(find("[data-chest-body]"), answer.bound);
     show(release, answer.bound);
     if (!answer.bound) {
       return;
     }
-    // a stale pick would quietly ask for a slot that now holds something else; the plugin would refuse it anyway
-    for (const slot of [...picked.keys()]) {
-      const still = slotOf(slot);
-      if (!still) {
-        picked.delete(slot);
-      } else {
-        picked.set(slot, Math.min(picked.get(slot) ?? still.amount, still.amount));
-      }
-    }
     if (where) {
-      const box = answer.kind === "DOUBLE" ? "большой сундук" : "сундук";
-      where.textContent = `Ваш ${box} на ${answer.size} ${plural(answer.size, "слот", "слота", "слотов")}, координаты ${answer.x}, ${answer.y}, ${answer.z}.`;
+      where.textContent = chestWhere(answer);
     }
-    drawGrid();
-    drawChosen();
     drawWishes();
     updateSubmit();
   }
 
   // wiring ---------------------------------------------------------------------------------------------------------
 
-  for (const option of TYPE_LABELS) {
+  for (const option of TYPE_HINTS) {
     const node = page.querySelector<HTMLInputElement>(`[data-chest-type="${option.value}"]`);
     node?.addEventListener("change", () => {
       if (node.checked) {

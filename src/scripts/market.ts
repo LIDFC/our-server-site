@@ -13,7 +13,7 @@ import {
   type MarketTrade,
   type MarketTradeAnswer,
 } from "./api";
-import { setupChest } from "./chest";
+import { offerPanel, setupChest } from "./chest";
 import { messageFor } from "./forms";
 import { icon } from "./icons";
 import { parseItem } from "./items";
@@ -38,6 +38,9 @@ const TRADE_STATES: Record<MarketTrade["state"], string> = {
 };
 
 const FINISHED: MarketTrade["state"][] = ["COMPLETED", "REJECTED", "CANCELLED", "EXPIRED"];
+
+/** States a listing is still alive in. The plugin keeps every listing it has ever had; the page shows the open ones. */
+const LIVE_LISTINGS = new Set(["DRAFT", "ACTIVE", "PENDING_TRADE"]);
 
 const LISTING_STATES: Record<string, string> = {
   DRAFT: "черновик",
@@ -270,13 +273,18 @@ export function initMarketPage(): void {
     }
   };
 
-  function listingTile(listing: MarketListing, players: MarketPeople): HTMLElement {
+  function listingTile(listing: MarketListing, players: MarketPeople, withState = false): HTMLElement {
     const article = document.createElement("article");
     article.className = "lot lot--open";
 
     const head = document.createElement("header");
     head.className = "lot__head";
     head.append(who(players, listing.ownerUuid), badge(TYPE_NAMES[listing.type] ?? listing.type));
+    // on the board every lot is active, so the state is noise; among my own lots it is the difference between
+    // "nobody has answered yet" and "somebody is trading for it right now"
+    if (withState && listing.state !== "ACTIVE") {
+      head.append(badge(LISTING_STATES[listing.state] ?? listing.state));
+    }
     article.append(head);
 
     const wantsSide = listing.type === "GIVEAWAY" || listing.type === "GIFT"
@@ -324,17 +332,23 @@ export function initMarketPage(): void {
 
     const myListings = find("[data-market-my-listings]");
     if (myListings) {
+      // a cancelled or completed lot used to stay on screen with its button, which reads as "cancelling did nothing"
+      const live = mine.listings.filter((listing) => LIVE_LISTINGS.has(listing.state));
       myListings.replaceChildren(
-        ...mine.listings.map((listing) => {
-          const tile = listingTile(listing, mine.players);
-          const actions = document.createElement("footer");
-          actions.className = "lot__actions";
-          actions.append(button("Снять лот", "secondary", () => send("/api/market/listings/cancel", { listingId: listing.id }), redraw));
-          tile.append(actions);
+        ...live.map((listing) => {
+          const tile = listingTile(listing, mine.players, true);
+          if (listing.state === "ACTIVE" || listing.state === "DRAFT") {
+            const actions = document.createElement("footer");
+            actions.className = "lot__actions";
+            actions.append(
+              button("Снять лот", "secondary", () => send("/api/market/listings/cancel", { listingId: listing.id }), redraw),
+            );
+            tile.append(actions);
+          }
           return tile;
         }),
       );
-      show(find("[data-market-no-listings]"), mine.listings.length === 0);
+      show(find("[data-market-no-listings]"), live.length === 0);
     }
 
     const inArchive = mine.trades.filter((trade) => trade.archived);
@@ -492,20 +506,42 @@ export function initMarketPage(): void {
 
     const actions = document.createElement("div");
     actions.className = "sheet__actions";
+    const pieces: HTMLElement[] = [title, who(players, listing.ownerUuid), line, parties];
+    const free = listing.type === "GIVEAWAY" || listing.type === "GIFT";
+
     if (mine) {
+      if (listing.state === "ACTIVE" || listing.state === "DRAFT") {
+        actions.append(
+          button("Снять лот", "secondary", () => send("/api/market/listings/cancel", { listingId: listing.id }), () => {
+            sheet?.close();
+            redraw();
+          }),
+        );
+      } else {
+        actions.append(note("Этот лот уже нельзя снять."));
+      }
+      pieces.push(actions);
+    } else if (listing.state !== "ACTIVE") {
+      actions.append(note("Лот уже закрыт или по нему идёт сделка."));
+      pieces.push(actions);
+    } else if (free) {
       actions.append(
-        button("Снять лот", "secondary", () => send("/api/market/listings/cancel", { listingId: listing.id }), () => {
+        button("Забрать", "primary", () => send("/api/market/listings/take", { listingId: listing.id }), () => {
           sheet?.close();
           redraw();
         }),
       );
+      pieces.push(actions, note("Вещи встанут в очередь: заберите их в игре командой /market deliveries."));
     } else {
-      // the marketplace API can cancel and answer trades, nothing else: taking a lot needs the item in your hand
-      const how = listing.type === "GIVEAWAY" || listing.type === "GIFT" ? `/market take ${listing.id}` : `/market offer ${listing.id}`;
-      actions.append(note(`Забрать и предложить обмен можно только в игре: ${how}`));
+      // answering a trade needs items, and the only items the site can move are the ones lying in a bound chest
+      pieces.push(offerPanel(listing.id, () => {
+        sheet?.close();
+        redraw();
+      }));
+      pieces.push(note(`Из рук это делается в игре: /market offer ${listing.id}`));
     }
 
-    sheetBody.replaceChildren(title, who(players, listing.ownerUuid), line, parties, actions);
+    sheetBody.replaceChildren(...pieces);
   }
 
   async function fillTradeSheet(tradeId: number, redraw: () => void): Promise<void> {

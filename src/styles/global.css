@@ -912,8 +912,9 @@ kbd {
   margin-bottom: 1.5rem;
 }
 
+/* the heading inside gives up its own margins to line up with the button beside it, so the block carries them */
 .market-head--sub {
-  margin-bottom: 1rem;
+  margin: 2rem 0 1rem;
 }
 
 .market-filters {
@@ -1488,6 +1489,27 @@ kbd {
   position: relative;
   z-index: 2;
   pointer-events: auto;
+}
+
+/* склад внутри листа лота: та же сетка, но в узком диалоге и без заголовка раздела */
+.chest-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.chest-offer .chest {
+  max-width: none;
+  margin: 0;
+}
+
+.sheet__subhead {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--ink-soft);
 }
 
 /* лист с фотографией шире обычного: снимок 16:10 надо показывать целиком, а не колодцем */

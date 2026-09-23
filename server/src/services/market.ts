@@ -85,6 +85,13 @@ export interface MarketChest {
  * <p>`chestDigest` is what the page last saw the whole chest as, and it travels with the request on purpose: if
  * the owner moved anything in the game since the page was drawn, the plugin refuses rather than take the wrong one.
  */
+/** An answer to somebody else's listing, paid out of the chest. */
+export interface ChestOfferRequest {
+  listingId: number;
+  chestDigest: string;
+  take: { slot: number; sha256: string; amount: number }[];
+}
+
 export interface ChestListingRequest {
   type: "GIVEAWAY" | "TRADE" | "WANTED" | "GIFT";
   chestDigest: string;
@@ -112,6 +119,8 @@ export interface MarketService {
   chestOf(uuid: string): Promise<Result<MarketChest>>;
   listFromChest(uuid: string, request: ChestListingRequest): Promise<Result<Record<string, unknown>>>;
   releaseChest(uuid: string): Promise<Result<Record<string, unknown>>>;
+  takeListing(uuid: string, listingId: number): Promise<Result<Record<string, unknown>>>;
+  offerFromChest(uuid: string, request: ChestOfferRequest): Promise<Result<Record<string, unknown>>>;
   cancelListing(uuid: string, listingId: number): Promise<Result<Record<string, unknown>>>;
   trade(uuid: string, tradeId: number, action: TradeAction): Promise<Result<Record<string, unknown>>>;
   health(): Promise<Result<Record<string, unknown>>>;
@@ -136,6 +145,7 @@ const ERRORS: Record<string, { status: number; error: string }> = {
   TRADE_NOT_ACCEPTED: { status: 409, error: "trade-not-accepted" },
   NOT_FOUND: { status: 404, error: "market-outdated" },
   PLAYER_NOT_FOUND: { status: 404, error: "player-not-found" },
+  OWN_LISTING: { status: 409, error: "own-listing" },
   EMPTY_LISTING: { status: 400, error: "empty-listing" },
   TOO_MANY_ITEMS: { status: 400, error: "too-many-items" },
   CHEST_NOT_BOUND: { status: 404, error: "chest-not-bound" },
@@ -384,6 +394,29 @@ export function createMarketService(config: Config): MarketService {
         method: "POST",
         body: { minecraftUuid: uuid },
         idempotencyKey: `site-chest-release-${uuid}-${randomUUID()}`,
+      });
+    },
+
+    async takeListing(uuid, listingId) {
+      return call(`/listings/${listingId}/take`, {
+        method: "POST",
+        body: { minecraftUuid: uuid },
+        idempotencyKey: `site-take-${uuid}-${listingId}`,
+      });
+    },
+
+    /**
+     * Answers a listing with items out of the chest.
+     *
+     * <p>The key is built from the listing and the fingerprint of the chest rather than from chance, for the same
+     * reason as a listing built from the chest: a browser that retries — a double click, a dropped connection — asks
+     * the same question again and gets the same answer, instead of making a second offer nobody meant.
+     */
+    async offerFromChest(uuid, request) {
+      return call(`/listings/${request.listingId}/offer-from-chest`, {
+        method: "POST",
+        body: { minecraftUuid: uuid, chestDigest: request.chestDigest, take: request.take },
+        idempotencyKey: `site-offer-${uuid}-${request.listingId}-${request.chestDigest.slice(0, 24)}`,
       });
     },
 
