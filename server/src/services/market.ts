@@ -134,6 +134,7 @@ const ERRORS: Record<string, { status: number; error: string }> = {
   LISTING_ALREADY_TAKEN: { status: 409, error: "listing-already-taken" },
   LISTING_NOT_ACTIVE: { status: 409, error: "listing-not-active" },
   TRADE_NOT_ACCEPTED: { status: 409, error: "trade-not-accepted" },
+  NOT_FOUND: { status: 404, error: "market-outdated" },
   PLAYER_NOT_FOUND: { status: 404, error: "player-not-found" },
   EMPTY_LISTING: { status: 400, error: "empty-listing" },
   TOO_MANY_ITEMS: { status: 400, error: "too-many-items" },
